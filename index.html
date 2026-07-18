@@ -649,27 +649,37 @@ function selectBestVoice() {
     const sv = speechVoices.find(v => v.voiceURI === cfg.voiceURI);
     if (sv) return sv;
   }
-  const preferred = ["Tingting", "Ting-Ting", "Meijia", "Xiaoxiao", "Yunyang", "Xiaoyi", "Google 普通话", "Microsoft"];
+  // 优选列表只放女声明（Yunyang/Kangkang 为男声，已剔除）
+  const preferred = ["Tingting", "Ting-Ting", "Meijia", "Xiaoxiao", "Xiaoyi", "Yaoyao", "Sin-Ji", "Google 普通话", "Microsoft"];
   for (const name of preferred) {
     const v = speechVoices.find(v => v.name.includes(name));
     if (v) return v;
   }
-  return speechVoices.find(v => v.lang === "zh-CN") || speechVoices.find(v => v.lang.startsWith("zh")) || speechVoices[0];
+  // 兜底：取第一个中文女声（已在 refreshVoiceOptions 中过滤掉男声）
+  const female = speechVoices.filter(v => (v.lang || "").toLowerCase().startsWith("zh") && !MALE_VOICE_RE.test(v.name + " " + (v.voiceURI || "")));
+  return female[0] || speechVoices.find(v => v.lang === "zh-CN") || speechVoices.find(v => v.lang.startsWith("zh")) || speechVoices[0];
 }
 
-// 打开设置时刷新「朗读声音」下拉（重读 getVoices 以兼容 iOS 异步加载）
+// 已知男声明（用于排除）：iOS 的 Yunyang/Kangkang、Android 的 "Male"、中文名含「男」
+const MALE_VOICE_RE = /yunyang|kang|kangkang|dashan|男|male/i;
+
+// 打开设置时刷新「朗读声音」下拉（只列女声，重读 getVoices 以兼容 iOS 异步加载）
 function refreshVoiceOptions() {
   if (!("speechSynthesis" in window)) return;
   speechVoices = window.speechSynthesis.getVoices();
   const sel = $("#voiceSel");
-  sel.innerHTML = '<option value="">自动（推荐）</option>';
-  const zh = speechVoices.filter(v => (v.lang || "").toLowerCase().startsWith("zh"));
-  zh.forEach(v => {
+  sel.innerHTML = '<option value="">自动（推荐·女声）</option>';
+  // 只保留中文女声：排除已知男声明
+  const female = speechVoices.filter(v => (v.lang || "").toLowerCase().startsWith("zh") && !MALE_VOICE_RE.test(v.name + " " + (v.voiceURI || "")));
+  female.forEach(v => {
     const o = document.createElement("option");
     o.value = v.voiceURI || v.name;
     o.textContent = v.name + "（" + v.lang + "）";
     sel.appendChild(o);
   });
+  // 若之前选的声音是男声(已被过滤掉)，回退到自动
+  const vals = female.map(v => v.voiceURI || v.name);
+  if (cfg.voiceURI && !vals.includes(cfg.voiceURI)) { cfg.voiceURI = ""; saveCfg(); }
   sel.value = cfg.voiceURI || "";
 }
 function speakText(text) {

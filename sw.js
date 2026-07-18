@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.10
+// 猪宝本地版 Service Worker v15.11
 // 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v15.10: 新增「朗读声音」选择（设置面板下拉选中文音色，存 voiceURI）；选声音即时生效；点遮罩可关设置
-const CACHE = "zhubao-local-v15.10";
+// v15.11: 朗读声音下拉只列女声（排除 Yunyang/Kangkang/Male 等男声明）；自动模式优选列表也只留女声明
+const CACHE = "zhubao-local-v15.11";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

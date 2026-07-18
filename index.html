@@ -1122,17 +1122,31 @@ function initVoiceRecognition() {
   return true;
 }
 
-function startVoiceChat() {
+async function startVoiceChat() {
   // 未手动选择模型 → 先选模型
   if (!cfg.modelChosen) { promptChooseModel(); return; }
   if (!voiceRec && !initVoiceRecognition()) {
     toast("当前浏览器不支持语音识别，请使用 Chrome 或 Edge");
     return;
   }
+
+  // 预检查麦克风权限：已授权→静默启动；已拒绝→提示不浪费操作
+  try {
+    const status = await navigator.permissions.query({ name: 'microphone' });
+    if (status.state === 'denied') {
+      toast('麦克风权限已被拒绝，请在浏览器地址栏左侧🔒图标中开启');
+      return;
+    }
+    // granted / prompt → 继续启动
+  } catch (_) {
+    // Safari/iOS 不支持 permissions.query → 走原有流程（首次会弹系统授权窗）
+  }
+
   voiceChatActive = true;
   voiceChatProcessing = false;
   try {
     voiceRec.start();
+    // 确认 start() 成功后再更新 UI（避免"已开启"toast 和权限弹窗同时出现）
     $("#voiceCallBtn").classList.add("voice-chat-active");
     $("#voiceCallBtn").innerHTML = HANGUP_ICON_SVG;
     toast("语音聊天已开启，直接说话即可");

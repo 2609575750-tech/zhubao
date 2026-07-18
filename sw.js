@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.7
+// 猪宝本地版 Service Worker v15.8
 // 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v15.7: 知识库页面顶部新增"返回对话"按钮，返回时不重复插入引导语
-const CACHE = "zhubao-local-v15.7";
+// v15.8: 语音聊天启动前预查麦克风权限(granted静默开/denied提示不弹窗)；UI状态变更移到start()确认后
+const CACHE = "zhubao-local-v15.8";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

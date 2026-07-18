@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.19
+// 猪宝本地版 Service Worker v15.21
 // 策略：导航请求 network-first / 同源资源 cache-first / 跨域CDN network-first
-// v15.19: 强制版本检查——绕过旧SW缓存检测新版，自动清缓存+注销SW+刷新；适配iPhone16Pro/17Air
-const CACHE = "zhubao-local-v15.19";
+// v15.21: JS动态赋值bottom贴底+安全区计算+键盘focus/blur监听（全面iOS适配）
+const CACHE = "zhubao-local-v15.21";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

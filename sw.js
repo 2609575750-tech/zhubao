@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.25
+// 猪宝本地版 Service Worker v15.26
 // 策略：导航请求 network-first / 同源资源 cache-first / 跨域CDN network-first
-// v15.25: 设备判断(仅iPhone16Pro/17Air)+删orientationchange仅竖屏
-const CACHE = "zhubao-local-v15.25";
+// v15.26: translateY偏移修正+scrollTop封底——两步强制兜底
+const CACHE = "zhubao-local-v15.26";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

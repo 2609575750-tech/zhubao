@@ -9,6 +9,33 @@
 <title>猪宝</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
+<script>
+// 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
+window.APP_VERSION = "v15.19";
+(async function() {
+  try {
+    // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
+    const res = await fetch("sw.js?t=" + Date.now(), { cache: "no-store" });
+    const txt = await res.text();
+    const m = txt.match(/v(\d+\.\d+)/);
+    if (m) {
+      const latest = "v" + m[1];
+      if (latest !== window.APP_VERSION) {
+        // 有新版 → 清除所有缓存 + 注销SW → 强制刷新
+        if ("caches" in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
+        }
+        if ("serviceWorker" in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(r => r.unregister()));
+        }
+        location.reload();
+      }
+    }
+  } catch(e) {}
+})();
+</script>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   :root {
@@ -414,7 +441,7 @@
   <!-- 设置弹窗 -->
   <div class="setup" id="setup">
     <div class="setup-box">
-      <h3>本地模型设置</h3>
+      <h3>本地模型设置 <span style="font-size:11px;color:#86868B;font-weight:400" id="verTag"></span></h3>
       <label>朗读声音（默认自动）</label>
       <select id="voiceSel">
         <option value="">自动（推荐）</option>
@@ -1389,6 +1416,8 @@ function renderSideList() {
   });
 }
 function openSetup() {
+  const vt = $("#verTag");
+  if (vt) vt.textContent = window.APP_VERSION || "";
   $("#modelSize").value = cfg.model;
   $("#customModel").value = cfg.customModel;
   $("#customModel").style.display = cfg.model === "custom" ? "block" : "none";

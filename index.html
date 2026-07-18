@@ -152,10 +152,14 @@
     background: var(--bg-page); padding: 2px 12px;
     padding-bottom: calc(2px + env(safe-area-inset-bottom)); flex-shrink: 0; width: 100%;
   }
-  /* ===== 底部区域容器（tabs+input-bar 整体贴底，但离屏幕底留一点间距） ===== */
+  /* ===== 底部区域容器（position:fixed 强制钉在屏幕底部，不受iOS 100dvh影响） ===== */
   .bottom-area {
-    flex-shrink: 0; margin-top: auto; margin-bottom: 12px;
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+    background: var(--bg-page);
+    padding-bottom: env(safe-area-inset-bottom);
   }
+  /* 给内容区留出底部空间，避免被fixed的bottom-area遮挡 */
+  #chatPanel, #knowledgePanel { padding-bottom: 130px !important; }
   /* 模型下载状态提示条 */
   .model-dl-hint {
     display: flex; align-items: center; gap: 6px;

@@ -666,11 +666,11 @@ function selectBestVoice() {
     const sv = speechVoices.find(v => v.voiceURI === cfg.voiceURI);
     if (sv) return sv;
   }
-  // 优选列表只放女声明，越靠前越自然（接近 ChatGPT live 风格的自然女声）
-  // iOS: Mei-Jia(美佳)/Ting-Ting(婷婷) 最自然；微软 Xiaoxiao(小晓) 次之；其余兜底
-  const preferred = ["Mei-Jia", "Meijia", "Ting-Ting", "Tingting", "Xiaoxiao", "Yaoyao", "Sin-Ji", "Google 普通话", "Microsoft"];
+  // 优选列表只放女声明，越靠前越自然
+  // 优先"月/悦/Yue"高音质女声（用户指定默认）→ 再 iOS 美佳/婷婷 → 微软小晓 → 其余兜底
+  const preferred = ["Yue", "月", "悦", "Mei-Jia", "Meijia", "Ting-Ting", "Tingting", "Xiaoxiao", "Yaoyao", "Sin-Ji", "Google 普通话", "Microsoft"];
   for (const name of preferred) {
-    const v = speechVoices.find(v => v.name.includes(name));
+    const v = speechVoices.find(v => v.name.includes(name) || (v.voiceURI || "").includes(name));
     if (v) return v;
   }
   // 兜底：取第一个中文女声（已在 refreshVoiceOptions 中过滤掉男声）
@@ -687,14 +687,25 @@ function refreshVoiceOptions() {
   speechVoices = window.speechSynthesis.getVoices();
   const sel = $("#voiceSel");
   sel.innerHTML = '<option value="">自动（推荐·女声）</option>';
-  // 只保留中文女声：排除已知男声明
-  const female = speechVoices.filter(v => (v.lang || "").toLowerCase().startsWith("zh") && !MALE_VOICE_RE.test(v.name + " " + (v.voiceURI || "")));
+  // 只保留中文女声 或 名字带"月/悦/Yue"的女声；排除已知男声明
+  const YUE_RE = /月|yue|悦/i;
+  const female = speechVoices.filter(v => {
+    const lang = (v.lang || "").toLowerCase();
+    const nameUri = v.name + " " + (v.voiceURI || "");
+    return (lang.startsWith("zh") || YUE_RE.test(nameUri)) && !MALE_VOICE_RE.test(nameUri);
+  });
   female.forEach(v => {
     const o = document.createElement("option");
     o.value = v.voiceURI || v.name;
     o.textContent = v.name + "（" + v.lang + "）";
     sel.appendChild(o);
   });
+  // 默认选中"月/悦/Yue"高音质女声（用户指定默认）；若设备上没有则保持自动
+  const yueVoice = female.find(v => YUE_RE.test(v.name + " " + (v.voiceURI || "")));
+  if (yueVoice && (!cfg.voiceURI || cfg.voiceURI === yueVoice.voiceURI || !female.some(v => (v.voiceURI || v.name) === cfg.voiceURI))) {
+    cfg.voiceURI = yueVoice.voiceURI || yueVoice.name;
+    saveCfg();
+  }
   // 若之前选的声音是男声(已被过滤掉)，回退到自动
   const vals = female.map(v => v.voiceURI || v.name);
   if (cfg.voiceURI && !vals.includes(cfg.voiceURI)) { cfg.voiceURI = ""; saveCfg(); }

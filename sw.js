@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.2
+// 猪宝本地版 Service Worker v15.3
 // 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v15.2: 本地模型默认空(设置面板不预选1.5B) + 走本地未选尺寸则拦截保存提示先选
-const CACHE = "zhubao-local-v15.2";
+// v15.3: DeepSeek 厂商默认模型归正为 deepseek-v4-flash(含旧deepseek-chat/reasoner停用名自动升级)
+const CACHE = "zhubao-local-v15.3";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

@@ -464,7 +464,7 @@ function defaultCfg() {
     // 云端 API 配置（免下载，直接调用厂商接口）
     apiEnabled: false,
     apiProvider: "deepseek",
-    apiModel: "deepseek-chat",
+    apiModel: "deepseek-v4-flash",
     apiUrl: "https://api.deepseek.com/chat/completions",
     apiKey: "",
     apiProxy: ""
@@ -1303,7 +1303,12 @@ function openSetup() {
   // 云端 API 字段回填
   $("#apiEnabled").classList.toggle("on", !!cfg.apiEnabled);
   $("#apiProvider").value = cfg.apiProvider;
-  $("#apiModel").value = cfg.apiModel;
+  // DeepSeek 厂商：模型为空或仍是已停用旧名(deepseek-chat/reasoner)时，归正为推荐模型 deepseek-v4-flash
+  let modelForShow = cfg.apiModel;
+  if (cfg.apiProvider === "deepseek" && (!modelForShow || modelForShow === "deepseek-chat" || modelForShow === "deepseek-reasoner")) {
+    modelForShow = API_PRESETS.deepseek.recommended;
+  }
+  $("#apiModel").value = modelForShow;
   $("#apiUrl").value = cfg.apiUrl;
   $("#apiKey").value = cfg.apiKey;
   $("#apiProxy").value = cfg.apiProxy;

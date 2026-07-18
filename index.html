@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v15.28";
+window.APP_VERSION = "v15.27";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -182,13 +182,13 @@ window.APP_VERSION = "v15.28";
   /* ===== 输入栏（vue-app 1:1） ===== */
   .input-bar {
     background: var(--bg-page); padding: 2px 12px;
-    padding-bottom: 0; flex-shrink: 0; width: 100%;
+    padding-bottom: 2px; flex-shrink: 0; width: 100%;
   }
   /* ===== 底部区域容器（不用position:fixed，靠JS控制body高度+flexbox推底） ===== */
   .bottom-area {
     flex-shrink: 0;
     background: var(--bg-page);
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: calc(env(safe-area-inset-bottom) + 3px);
     z-index: 10;
     /* 硬件加速层：独立GPU合成，绕过WebKit渲染缓存bug，大幅降低键盘弹出底部偏移概率 */
     transform: translateZ(0);

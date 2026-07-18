@@ -395,6 +395,10 @@
   <div class="setup" id="setup">
     <div class="setup-box">
       <h3>本地模型设置</h3>
+      <label>朗读声音（默认自动）</label>
+      <select id="voiceSel">
+        <option value="">自动（推荐）</option>
+      </select>
       <label>模型尺寸</label>
       <select id="modelSize">
         <option value="" disabled selected hidden>请选择本地模型…</option>
@@ -472,7 +476,9 @@ function defaultCfg() {
     apiModel: "deepseek-v4-flash",
     apiUrl: "https://api.deepseek.com/chat/completions",
     apiKey: "",
-    apiProxy: ""
+    apiProxy: "",
+    // 朗读声音：空字符串=自动选最优中文音色；否则存所选 voice 的 voiceURI（跨版本稳定）
+    voiceURI: ""
   };
 }
 // 合并旧配置：已存字段覆盖默认值，缺失字段自动补默认（避免旧用户丢字段）
@@ -635,15 +641,36 @@ let speechEnabled = false;
 let speechVoices = [];
 if ("speechSynthesis" in window) {
   speechVoices = window.speechSynthesis.getVoices();
-  window.speechSynthesis.onvoiceschanged = () => { speechVoices = window.speechSynthesis.getVoices(); };
+  window.speechSynthesis.onvoiceschanged = () => { speechVoices = window.speechSynthesis.getVoices(); if ($("#setup").classList.contains("open")) refreshVoiceOptions(); };
 }
 function selectBestVoice() {
+  // 用户手动指定了声音 → 优先用（按 voiceURI 精确匹配，跨系统版本稳定）
+  if (cfg.voiceURI) {
+    const sv = speechVoices.find(v => v.voiceURI === cfg.voiceURI);
+    if (sv) return sv;
+  }
   const preferred = ["Tingting", "Ting-Ting", "Meijia", "Xiaoxiao", "Yunyang", "Xiaoyi", "Google 普通话", "Microsoft"];
   for (const name of preferred) {
     const v = speechVoices.find(v => v.name.includes(name));
     if (v) return v;
   }
   return speechVoices.find(v => v.lang === "zh-CN") || speechVoices.find(v => v.lang.startsWith("zh")) || speechVoices[0];
+}
+
+// 打开设置时刷新「朗读声音」下拉（重读 getVoices 以兼容 iOS 异步加载）
+function refreshVoiceOptions() {
+  if (!("speechSynthesis" in window)) return;
+  speechVoices = window.speechSynthesis.getVoices();
+  const sel = $("#voiceSel");
+  sel.innerHTML = '<option value="">自动（推荐）</option>';
+  const zh = speechVoices.filter(v => (v.lang || "").toLowerCase().startsWith("zh"));
+  zh.forEach(v => {
+    const o = document.createElement("option");
+    o.value = v.voiceURI || v.name;
+    o.textContent = v.name + "（" + v.lang + "）";
+    sel.appendChild(o);
+  });
+  sel.value = cfg.voiceURI || "";
 }
 function speakText(text) {
   if (!("speechSynthesis" in window)) return;
@@ -1338,6 +1365,7 @@ function openSetup() {
   $("#apiProxy").value = cfg.apiProxy;
   fillModelList(cfg.apiProvider);
   refreshApiUI();
+  refreshVoiceOptions();
   $("#setup").classList.add("open");
 }
 function refreshApiUI() {
@@ -1404,6 +1432,7 @@ $("#saveSetup").onclick = () => {
   cfg.apiUrl = $("#apiUrl").value.trim();
   cfg.apiKey = $("#apiKey").value.trim();
   cfg.apiProxy = $("#apiProxy").value.trim();
+  cfg.voiceURI = $("#voiceSel").value; // 朗读声音（空=自动）
   cfg.modelChosen = true; // 手动保存即视为已选择模型，之后发消息才生效
   choosePrompted = false;
   saveCfg(); generator = null;
@@ -1413,6 +1442,17 @@ $("#saveSetup").onclick = () => {
   setStatus(cfg.apiEnabled ? ("云端 API · " + (API_PRESETS[cfg.apiProvider]?.label || cfg.apiProvider)) : "本地模型已选择 · 发消息自动加载", cfg.apiEnabled ? "ok" : "loading");
 };
 $("#clearChatBtn").onclick = () => { if (!confirm("确定清空对话？")) return; clearChat(); $("#setup").classList.remove("open"); };
+
+// 朗读声音：切换即即时保存并生效（不依赖是否选了模型）
+$("#voiceSel").onchange = () => {
+  cfg.voiceURI = $("#voiceSel").value;
+  saveCfg();
+  const name = $("#voiceSel").selectedOptions[0]?.textContent || "自动";
+  toast(name === "自动（推荐）" ? "已恢复自动选声" : "朗读声音已设为：" + name);
+};
+
+// 点击设置面板背景（遮罩）关闭，无需强制选模型
+$("#setup").addEventListener("click", e => { if (e.target === e.currentTarget) $("#setup").classList.remove("open"); });
 
 // 模型选择器文字
 function updateModelPickText() {

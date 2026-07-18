@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v15.27";
+window.APP_VERSION = "v15.29";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -1657,20 +1657,16 @@ if (window.visualViewport) {
 document.addEventListener("focusin", function(e) {
   if (!_shouldFix) return;
   if (e.target.tagName !== "TEXTAREA" && e.target.tagName !== "INPUT") return;
-  // 立刻滚动容器到最底部，抵消 iOS 自动上滚页面
-  var wrapper = document.getElementById("appWrapper");
-  if (wrapper) wrapper.scrollTop = wrapper.scrollHeight;
+  // 立刻修正容器高度（不操作滚动，避免和 iOS 原生上滚打架）
   forceBottomFix();
+  // 等 iOS 自动上滚动画结束（约 400ms），再做一次最终校正
+  var wrapper = document.getElementById("appWrapper");
   var ba = document.getElementById("bottomArea");
-  if (ba) ba.scrollIntoView(false);
-  // 100ms 后重新计算偏移（iOS 键盘弹出有延迟，自动下拉留白需二次抵消）
   setTimeout(function() {
     if (wrapper) wrapper.scrollTop = wrapper.scrollHeight;
     forceBottomFix();
-    if (ba) ba.scrollIntoView(false);
-  }, 100);
-  setTimeout(function(){ forceBottomFix(); if (ba) ba.scrollIntoView(false); }, 350);
-  setTimeout(forceBottomFix, 600);
+  }, 400);
+  setTimeout(function(){ forceBottomFix(); }, 700);
 });
 document.addEventListener("focusout", function(e) {
   if (!_shouldFix) return;

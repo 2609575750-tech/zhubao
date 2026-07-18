@@ -1,0 +1,13 @@
+{
+  "name": "猪宝 · 本地",
+  "short_name": "猪宝本地",
+  "description": "纯本地离线的 AI 养猪助手，调用手机本地模型，知识库总结本地留存",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F8F9FA",
+  "theme_color": "#2DA968",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

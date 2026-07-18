@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v11
+// 猪宝本地版 Service Worker v12
 // 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v11: iOS强制WASM(避免WebGPU重试)+下载超时10分钟+dtype回退
-const CACHE = "zhubao-local-v11";
+// v12: 下载总超时放宽到30分钟+中断自动重试2次+进度条显示已用时间
+const CACHE = "zhubao-local-v12";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

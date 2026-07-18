@@ -565,6 +565,7 @@ async function dbDel(id) { const db = await openDB(); return new Promise((res, r
 
 /* ============ transformers.js WebGPU 推理 ============ */
 let lib = null, libFailed = false, generator = null, modelLoading = false;
+let modelLoadStart = 0; // 模型下载开始时间，用于进度条显示已用时长
 let pendingSends = [];  // 模型下载中排队的消息，下完自动发送
 const CDN_URLS = [
   "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3",
@@ -594,61 +595,70 @@ async function ensureModel() {
   if (generator) return generator;
   if (modelLoading) { while (modelLoading && !generator) await new Promise(r => setTimeout(r, 200)); if (generator) return generator; }
   modelLoading = true;
+  modelLoadStart = Date.now();
   $("#modelDlHint").style.display = "flex";
   const mirrors = getMirrorList();
   let lastErr;
   // 多种 dtype 依次尝试，哪个能在当前设备跑就用哪个（兼容性兜底）
   const DTYPES = ["q4f16", "q4", "q8", "fp16", "fp32"];
-  // 总超时 10 分钟（手机下载 400MB 模型可能需要 3-8 分钟）
-  const TOTAL_TIMEOUT = 600000;
-  const startTime = Date.now();
-  for (const mirror of mirrors) {
-    try {
-      setStatus(`正在从 ${new URL(mirror).hostname} 下载模型…`, "loading");
-      $("#modelDlText").textContent = `正在从 ${new URL(mirror).hostname} 下载模型…`;
-      const { pipeline, env } = await loadLib();
-      env.remoteHost = mirror;
-      env.allowRemoteModels = true;
-      let dev = cfg.device;
-      // iOS Safari 的 WebGPU 不成熟，强制用 WASM，避免反复重试浪费下载时间
-      if (/iPhone|iPad|iPod/i.test(navigator.userAgent) && dev === "webgpu") dev = "wasm";
-      let loaded = false;
-      for (const dt of DTYPES) {
-        // 检查是否已超总时间
-        const elapsed = Date.now() - startTime;
-        if (elapsed > TOTAL_TIMEOUT) throw new Error("下载超时（10分钟未完成，请检查网络或切换更小的模型）");
-        try {
-          $("#modelDlText").textContent = `正在从 ${new URL(mirror).hostname} 下载模型…（格式 ${dt}）`;
-          const remaining = TOTAL_TIMEOUT - elapsed;
-          const dlPromise = pipeline("text-generation", currentModelId(), { device: dev, dtype: dt, num_threads: 1, progress_callback: onProgress });
-          const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error("下载超时")), Math.max(remaining, 120000)));
-          generator = await Promise.race([dlPromise, timeoutPromise]);
-          loaded = true;
-          break;
-        } catch (de) {
-          lastErr = de;
-          if (/超时/.test(de.message || "")) throw de; // 总超时，不再试其他格式
-          // 初始化失败 → 试下一种格式（文件可能已缓存，很快）
+  // 总超时 30 分钟：弱网/VPN 下 385MB 的 1.5B 模型可能需 15-20 分钟，放宽避免被掐断
+  const TOTAL_TIMEOUT = 1800000;
+  const MAX_ATTEMPTS = 2; // 下载中断自动重试一次（已下载的缓存文件会跳过）
+  let attempt = 0;
+  while (attempt < MAX_ATTEMPTS) {
+    attempt++;
+    if (attempt > 1) toast("下载中断，正在自动重试（" + attempt + "/" + MAX_ATTEMPTS + "），已下载的文件会跳过");
+    const startTime = Date.now();
+    for (const mirror of mirrors) {
+      try {
+        setStatus(`正在从 ${new URL(mirror).hostname} 下载模型…`, "loading");
+        $("#modelDlText").textContent = `正在从 ${new URL(mirror).hostname} 下载模型…（第${attempt}次）`;
+        const { pipeline, env } = await loadLib();
+        env.remoteHost = mirror;
+        env.allowRemoteModels = true;
+        let dev = cfg.device;
+        // iOS Safari 的 WebGPU 不成熟，强制用 WASM，避免反复重试浪费下载时间
+        if (/iPhone|iPad|iPod/i.test(navigator.userAgent) && dev === "webgpu") dev = "wasm";
+        let loaded = false;
+        for (const dt of DTYPES) {
+          // 检查是否已超总时间
+          const elapsed = Date.now() - startTime;
+          if (elapsed > TOTAL_TIMEOUT) throw new Error("下载超时（30分钟未完成，请检查网络或切换更小的模型）");
+          try {
+            $("#modelDlText").textContent = `正在从 ${new URL(mirror).hostname} 下载模型…（格式 ${dt}）`;
+            const remaining = TOTAL_TIMEOUT - elapsed;
+            const dlPromise = pipeline("text-generation", currentModelId(), { device: dev, dtype: dt, num_threads: 1, progress_callback: onProgress });
+            const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error("下载超时")), Math.max(remaining, 120000)));
+            generator = await Promise.race([dlPromise, timeoutPromise]);
+            loaded = true;
+            break;
+          } catch (de) {
+            lastErr = de;
+            if (/超时/.test(de.message || "")) throw de; // 总超时，不再试其他格式
+            // 初始化失败 → 试下一种格式（文件可能已缓存，很快）
+          }
+        }
+        if (!loaded) throw lastErr || new Error("所有模型格式均加载失败");
+        modelLoading = false;
+        $("#modelDlHint").style.display = "none";
+        setStatus("模型已就绪 · " + (dev === "webgpu" ? "WebGPU" : "WASM"), "ok");
+        updateModelPickText();
+        toast(dev === "webgpu" ? "✅ 模型已就绪（WebGPU），可以开始聊天了" : "✅ 模型已就绪（WASM），可以开始聊天了");
+        // 自动发送排队消息
+        flushPendingSends();
+        return generator;
+      } catch (e) {
+        lastErr = e;
+        if (/webgpu/i.test(e.message || "") && cfg.device === "webgpu") {
+          try {
+            toast("WebGPU不可用，切换WASM模式");
+            cfg.device = "wasm"; saveCfg();
+          } catch (e2) { lastErr = e2; }
         }
       }
-      if (!loaded) throw lastErr || new Error("所有模型格式均加载失败");
-      modelLoading = false;
-      $("#modelDlHint").style.display = "none";
-      setStatus("模型已就绪 · " + (dev === "webgpu" ? "WebGPU" : "WASM"), "ok");
-      updateModelPickText();
-      toast(dev === "webgpu" ? "✅ 模型已就绪（WebGPU），可以开始聊天了" : "✅ 模型已就绪（WASM），可以开始聊天了");
-      // 自动发送排队消息
-      flushPendingSends();
-      return generator;
-    } catch (e) {
-      lastErr = e;
-      if (/webgpu/i.test(e.message || "") && cfg.device === "webgpu") {
-        try {
-          toast("WebGPU不可用，切换WASM模式");
-          cfg.device = "wasm"; saveCfg();
-        } catch (e2) { lastErr = e2; }
-      }
     }
+    if (attempt >= MAX_ATTEMPTS) break;
+    await new Promise(r => setTimeout(r, 1500)); // 重试前稍等
   }
   modelLoading = false;
   $("#modelDlHint").style.display = "none";
@@ -660,9 +670,12 @@ async function ensureModel() {
 }
 function onProgress(p) {
   if (p.status === "progress" && typeof p.progress === "number") {
-    setStatus("下载模型 " + Math.round(p.progress) + "%", "loading");
+    const pct = Math.round(p.progress);
+    const elapsed = modelLoadStart ? Math.round((Date.now() - modelLoadStart) / 1000) : 0;
+    const mm = Math.floor(elapsed / 60), ss = elapsed % 60;
+    setStatus("下载模型 " + pct + "%", "loading");
     const t = $("#modelDlText");
-    if (t) t.textContent = "下载模型 " + Math.round(p.progress) + "%";
+    if (t) t.textContent = "下载模型 " + pct + "% · 已用 " + mm + "分" + (ss < 10 ? "0" : "") + ss + "秒";
   }
   else if (p.status === "ready" || p.status === "done") setStatus("准备模型文件…", "loading");
 }

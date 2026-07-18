@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.16
-// 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v15.16: 朗读声音加入"月/悦/Yue"高音质女声并默认选中（优选列表最前）
-const CACHE = "zhubao-local-v15.16";
+// 猪宝本地版 Service Worker v15.17
+// 策略：导航请求 network-first（保证及时更新）/ 同源资源 cache-first / 跨域CDN network-first
+// v15.17: 修复PWA缓存导致用户看不到更新——导航请求改network-first + 自动刷新+定期检查更新
+const CACHE = "zhubao-local-v15.17";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {
@@ -19,6 +19,20 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
 
   const url = new URL(req.url);
+
+  // 导航请求（index.html 等）：network-first，保证每次打开都拿到最新版
+  if (req.mode === "navigate") {
+    e.respondWith(
+      fetch(req).then(res => {
+        if (res && res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(req, clone)).catch(() => {});
+        }
+        return res;
+      }).catch(() => caches.match(req).then(c => c || caches.match("index.html")))
+    );
+    return;
+  }
 
   // 同源资源：cache-first（保证离线可用）
   if (url.origin === location.origin) {

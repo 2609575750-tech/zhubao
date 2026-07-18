@@ -240,14 +240,16 @@
   .setup-box h3 { margin: 0 0 8px; font-size: 16px; }
   .setup-box label { font-size: 12px; color: var(--text-tertiary); display: block; margin-bottom: 2px; font-weight: 500; }
   .setup-box select, .setup-box input { width: 100%; border: 1px solid var(--border-light); border-radius: 10px; padding: 8px; font-size: 14px; margin-bottom: 7px; background: var(--bg-white); }
-  .setup-box button { width: 100%; padding: 9px; border: none; border-radius: 12px; background: var(--brand-green); color: #fff; font-size: 15px; font-weight: 600; }
-  .setup-box button:active { background: var(--brand-green-dark); }
-  .setup-box .clear-btn { background: #FF3B30; margin-top: 5px; }
+  /* 底部操作栏：保存 / 测试连接 / 清空对话 —— 横排紧凑 */
+  .setup-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .setup-actions button { flex: 1; padding: 10px 0; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: opacity .15s, transform .08s; }
+  .setup-actions button:active { opacity: .75; transform: scale(.96); }
+  .setup-actions .btn-save { background: #34C759; color: #fff; }       /* 绿色-保存 */
+  .setup-actions .btn-test { background: #007AFF; color: #fff; }        /* 蓝色-测试 */
+  .setup-actions .btn-danger { background: #FF3B30; color: #fff; }      /* 红色-清空 */
   .setup-divider { display: flex; align-items: center; color: var(--text-tertiary); font-size: 12px; margin: 10px 0 6px; }
   .setup-divider::before, .setup-divider::after { content: ""; flex: 1; height: 0.5px; background: var(--border-light); }
   .setup-divider span { padding: 0 10px; }
-  .setup-box .api-test-btn { background: #007AFF; margin-bottom: 6px; }
-  .setup-box .api-test-btn:active { background: #0062cc; }
 
   /* ===== 历史抽屉（汉堡弹出，对齐 vue-app） ===== */
   .sidemask { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 45; opacity: 0; pointer-events: none; transition: opacity .25s; }
@@ -442,13 +444,14 @@
         <input id="apiUrl" placeholder="https://api.deepseek.com/chat/completions" autocomplete="off" />
         <label>API Key</label>
         <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" />
-        <label>代理地址（可选）</label>
-        <input id="apiProxy" placeholder="留空直连；或 https://你的代理/?url={url}" autocomplete="off" />
-        <button class="api-test-btn" id="apiTestBtn" type="button">测试连接</button>
+      </div>
       </div>
 
-      <button id="saveSetup">保存</button>
-      <button class="clear-btn" id="clearChatBtn">清空对话</button>
+      <div class="setup-actions">
+        <button id="saveSetup" class="btn-save">✓ 保存</button>
+        <button id="apiTestBtn2" class="btn-test">🔗 测试</button>
+        <button id="clearChatBtn" class="btn-danger">🗑 清空</button>
+      </div>
     </div>
   </div>
 
@@ -544,7 +547,7 @@ async function runModelCloud(messages, onToken) {
       body: JSON.stringify({ model: cfg.apiModel || "", messages, stream: true })
     });
   } catch (e) {
-    throw new Error("网络/CORS 错误：" + (e.message || e) + "（浏览器直连多数厂商会被 CORS 拦截，请在『代理地址』填你自己的代理）");
+    throw new Error("网络/CORS 错误：" + (e.message || e) + "（请检查 API 地址是否正确，或确认网络可访问该地址）");
   }
   if (!res.ok) {
     let detail = "";
@@ -1373,7 +1376,6 @@ function openSetup() {
   $("#apiModel").value = modelForShow;
   $("#apiUrl").value = cfg.apiUrl;
   $("#apiKey").value = cfg.apiKey;
-  $("#apiProxy").value = cfg.apiProxy;
   fillModelList(cfg.apiProvider);
   refreshApiUI();
   refreshVoiceOptions();
@@ -1411,20 +1413,19 @@ $("#apiModel").oninput = e => {
     fillModelList(p);
   }
 };
-$("#apiTestBtn").onclick = async () => {
-  const btn = $("#apiTestBtn"); btn.disabled = true; btn.textContent = "测试中…";
+$("#apiTestBtn2").onclick = async () => {
+  const btn = $("#apiTestBtn2"); btn.disabled = true; btn.textContent = "测试中…";
   try {
     cfg.apiProvider = $("#apiProvider").value;
     cfg.apiModel = $("#apiModel").value.trim();
     cfg.apiUrl = $("#apiUrl").value.trim();
     cfg.apiKey = $("#apiKey").value.trim();
-    cfg.apiProxy = $("#apiProxy").value.trim();
     saveCfg();
     const r = await runModelCloud([{ role: "system", content: "你是助手" }, { role: "user", content: "你好，只回复 OK 两个字" }], () => {});
     if (r && r.trim()) toast("✅ 连接成功：" + r.trim().slice(0, 30));
     else toast("⚠️ 返回为空，检查模型名/地址");
   } catch (e) { toast("❌ " + (e.message || e).slice(0, 100)); }
-  finally { btn.disabled = false; btn.textContent = "测试连接"; }
+  finally { btn.disabled = false; btn.textContent = "🔗 测试"; }
 };
 $("#saveSetup").onclick = () => {
   const apiEnabled = $("#apiEnabled").classList.contains("on");
@@ -1442,7 +1443,6 @@ $("#saveSetup").onclick = () => {
   cfg.apiModel = $("#apiModel").value.trim();
   cfg.apiUrl = $("#apiUrl").value.trim();
   cfg.apiKey = $("#apiKey").value.trim();
-  cfg.apiProxy = $("#apiProxy").value.trim();
   cfg.voiceURI = $("#voiceSel").value; // 朗读声音（空=自动）
   cfg.modelChosen = true; // 手动保存即视为已选择模型，之后发消息才生效
   choosePrompted = false;

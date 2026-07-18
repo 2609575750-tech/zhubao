@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.12
+// 猪宝本地版 Service Worker v15.13
 // 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v15.12: 自动朗读默认选最自然女声（优先 iOS 美佳/婷婷、微软小晓），接近 ChatGPT live 风格
-const CACHE = "zhubao-local-v15.12";
+// v15.13: 设置面板UI优化——删除多余代理地址栏；底部按钮改为横排三色（保存绿/测试蓝/清空红）
+const CACHE = "zhubao-local-v15.13";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

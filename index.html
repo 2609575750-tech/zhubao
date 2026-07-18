@@ -1456,8 +1456,8 @@ async function init() {
   const msgs = activeSession().messages;
   if (msgs.length) { for (const m of msgs) addMsg(m.role, renderMsg(m.content)); scrollBottom(); }
   // 空会话时保留欢迎页（已在 HTML 中）
-
-  loadLib().catch(() => {});
+  // 仅本地模式才预加载 transformers.js 库；云端模式不需要，避免显示「正在加载模型库…」
+  if (!cfg.apiEnabled) { loadLib().catch(() => {}); }
 }
 init();
 

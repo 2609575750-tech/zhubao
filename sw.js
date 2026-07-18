@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.15
+// 猪宝本地版 Service Worker v15.16
 // 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v15.15: 设置面板底部三按钮去掉图标，文字竖排展示（writing-mode:vertical-rl），按钮更紧凑
-const CACHE = "zhubao-local-v15.15";
+// v15.16: 朗读声音加入"月/悦/Yue"高音质女声并默认选中（优选列表最前）
+const CACHE = "zhubao-local-v15.16";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

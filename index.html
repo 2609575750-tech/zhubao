@@ -1571,11 +1571,14 @@ if ("serviceWorker" in navigator) {
       reg.addEventListener("updatefound", () => {
         const sw = reg.installing;
         if (sw) sw.addEventListener("statechange", () => {
+          // 新 SW 已安装且有旧 SW 在控 → 自动刷新加载新版
           if (sw.state === "installed" && navigator.serviceWorker.controller) {
-            toast("新版本可用，建议刷新页面");
+            location.reload();
           }
         });
       });
+      // 每 30 秒检查一次更新（确保用户及时拿到新版）
+      setInterval(() => reg.update().catch(() => {}), 30000);
     }).catch(() => {});
   });
 }

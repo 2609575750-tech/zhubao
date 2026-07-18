@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.26
+// 猪宝本地版 Service Worker v15.27
 // 策略：导航请求 network-first / 同源资源 cache-first / 跨域CDN network-first
-// v15.26: translateY偏移修正+scrollTop封底——两步强制兜底
-const CACHE = "zhubao-local-v15.26";
+// v15.27: 修复padding-bottom双层叠加导致输入框离底过远
+const CACHE = "zhubao-local-v15.27";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

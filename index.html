@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v15.23";
+window.APP_VERSION = "v15.24";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -56,10 +56,15 @@ window.APP_VERSION = "v15.23";
   html, body { margin: 0; height: 100%; font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; }
   body {
     background: var(--bg-page); color: var(--text-primary);
-    display: flex; flex-direction: column;
-    height: 100dvh; height: -webkit-fill-available;
     overflow: hidden;
     -webkit-user-select: none; user-select: none;
+  }
+
+  /* ===== 全屏滚动容器：独立overflow-y:auto，禁止body原生滚动 ===== */
+  /* 行业公认缓解iOS PWA底部偏移的最佳实践——独立滚动容器 + 硬件加速 */
+  #appWrapper {
+    height: 100vh; overflow-y: auto; display: flex; flex-direction: column;
+    -webkit-overflow-scrolling: touch;
   }
 
   /* ===== 顶栏（vue-app 1:1 浅色） ===== */
@@ -185,6 +190,8 @@ window.APP_VERSION = "v15.23";
     background: var(--bg-page);
     padding-bottom: calc(env(safe-area-inset-bottom) + 6px);
     z-index: 10;
+    /* 硬件加速层：独立GPU合成，绕过WebKit渲染缓存bug，大幅降低键盘弹出底部偏移概率 */
+    transform: translateZ(0);
   }
   /* 内容区可滚动，不被底部遮挡 */
   #chatPanel, #knowledgePanel { padding-bottom: 8px !important; }
@@ -331,6 +338,7 @@ window.APP_VERSION = "v15.23";
 </style>
 </head>
 <body>
+<div id="appWrapper">
 
   <!-- 顶栏（vue-app 1:1） -->
   <div class="top">
@@ -427,6 +435,7 @@ window.APP_VERSION = "v15.23";
     </div>
   </div>
   </div><!-- /bottom-area -->
+</div><!-- /appWrapper -->
 
   <!-- 历史抽屉（汉堡弹出，对齐 vue-app） -->
   <div class="sidemask" id="sideMask"></div>
@@ -1605,12 +1614,11 @@ async function init() {
 function forceBottomFix() {
   // 只以 visualViewport 为唯一真实来源（键盘弹起时它自动缩小）
   var vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
-  // 覆盖根容器高度，强制压缩内容区（flexbox 布局自动把底部推到压缩后的底部）
-  document.documentElement.style.height = vh + "px";
-  document.body.style.height = vh + "px";
-  // 确保 body 是 flex column 布局
-  document.body.style.display = "flex";
-  document.body.style.flexDirection = "column";
+  // 修改 wrapper 高度 = 可视高度（覆盖 CSS 的 100vh fallback）
+  // wrapper 内部 flexbox 布局自动把 bottom-area 推到底部
+  var wrapper = document.getElementById("appWrapper");
+  if (wrapper) wrapper.style.height = vh + "px";
+  // body 禁止滚动
   document.body.style.overflow = "hidden";
 }
 // 持续动态校准 → 300ms 轮询（覆盖 iOS 底层渲染漂移）

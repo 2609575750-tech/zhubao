@@ -29,7 +29,9 @@
   html, body { margin: 0; height: 100%; font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; }
   body {
     background: var(--bg-page); color: var(--text-primary);
-    display: flex; flex-direction: column; height: 100dvh; overflow: hidden;
+    display: flex; flex-direction: column;
+    height: 100dvh; height: -webkit-fill-available;
+    overflow: hidden;
     -webkit-user-select: none; user-select: none;
   }
 
@@ -149,6 +151,10 @@
   .input-bar {
     background: var(--bg-page); padding: 2px 12px;
     padding-bottom: calc(2px + env(safe-area-inset-bottom)); flex-shrink: 0; width: 100%;
+  }
+  /* ===== 底部区域容器（tabs+input-bar 整体贴底，但离屏幕底留一点间距） ===== */
+  .bottom-area {
+    flex-shrink: 0; margin-top: auto; margin-bottom: 12px;
   }
   /* 模型下载状态提示条 */
   .model-dl-hint {
@@ -357,7 +363,8 @@
     </div>
   </div>
 
-  <!-- 底部 Tab 栏 -->
+  <!-- 底部 Tab 栏 + 输入栏（整体贴底，解决iOS 100dvh不准导致悬空的问题） -->
+  <div class="bottom-area" id="bottomArea">
   <div class="tabs" id="tabBar">
     <button class="tab-btn active" data-tab="formPanel"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>表单</button>
     <button class="tab-btn" data-tab="reportPanel"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 2l5 5h-5V4zm1 13H8v-2h6v2zm0-4H8v-2h6v2z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>报告</button>
@@ -381,6 +388,7 @@
       </button>
     </div>
   </div>
+  </div><!-- /bottom-area -->
 
   <!-- 历史抽屉（汉堡弹出，对齐 vue-app） -->
   <div class="sidemask" id="sideMask"></div>

@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v15.25";
+window.APP_VERSION = "v15.26";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -1605,37 +1605,43 @@ async function init() {
   // 仅本地模式且已选模型才预加载库（未选模型时不加载任何东西，避免显示「正在加载模型库…」）
   if (!cfg.apiEnabled && cfg.modelChosen) { loadLib().catch(() => {}); }
 }
-/* ============ iOS PWA 底部精准锚定方案（仅 iPhone 16 Pro / 17 Air 执行） ============ */
-// 核心原理：
-//   1. 仅竖屏，删除横竖屏切换监听减抖动
-//   2. 加设备判断，只给 iPhone16 Pro / 17 Air 执行修复
-//   3. 全程监控 visualViewport 获取精确可视高度
-//   4. 输入框聚焦时 scrollIntoView 兜底锚定
-//   5. 300ms 轮询持续校准，覆盖 iOS 所有渲染偏移场景
+/* ============ iOS PWA 底部 anchor 方案 ============ */
+// 两步强制兜底：
+//   1. translateY 主动偏移：计算底部容器实际位置与可视区底部的间隙，用 translateY 往上拉贴键盘
+//   2. scrollTop 封底：输入框聚焦时强制滚动容器到最底部，抵消 iOS 自动上滚
 function isTargetDevice() {
-  // 只对 iOS 设备执行
   if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) return false;
-  var w = window.screen.width;
-  var h = window.screen.height;
-  var min = Math.min(w, h);
-  var max = Math.max(w, h);
-  // iPhone 16 Pro: 393×852 | iPhone 17 Air: 402×874
+  var w = window.screen.width, h = window.screen.height;
+  var min = Math.min(w, h), max = Math.max(w, h);
   return (min === 393 && max === 852) || (min === 402 && max === 874);
 }
 var _shouldFix = isTargetDevice();
+// 重置底部偏移（恢复 CSS 默认的 translateZ(0)）
+function resetBAOffset() {
+  var ba = document.getElementById("bottomArea");
+  if (ba) ba.style.transform = "";
+}
 function forceBottomFix() {
   if (!_shouldFix) return;
-  // 只以 visualViewport 为唯一真实来源（键盘弹起时它自动缩小）
   var vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
-  // 修改 wrapper 高度 = 可视高度（覆盖 CSS 的 100vh fallback）
   var wrapper = document.getElementById("appWrapper");
   if (wrapper) wrapper.style.height = vh + "px";
-  // body 禁止滚动
   document.body.style.overflow = "hidden";
+  // 第一步：测量底部容器实际底部位置，计算间隙，translateY 往上拽
+  var ba = document.getElementById("bottomArea");
+  if (!ba) return;
+  var r = ba.getBoundingClientRect();
+  var gap = vh - r.bottom;
+  if (gap > 2) {
+    // 有间隙 → translateY 拉上去（同时保持 translateZ(0) 硬件分层）
+    ba.style.transform = "translateZ(0) translateY(" + (-gap) + "px)";
+  } else {
+    // 已贴底 → 清除偏移，回归 CSS 默认的 translateZ(0)
+    ba.style.transform = "";
+  }
 }
 // 持续动态校准 → 300ms 轮询
 var fixTimer = setInterval(forceBottomFix, 300);
-// 多时机初始化（删除 orientationchange，仅竖屏减少抖动）
 window.addEventListener("DOMContentLoaded", forceBottomFix);
 window.addEventListener("load", forceBottomFix);
 setTimeout(forceBottomFix, 50);
@@ -1643,30 +1649,35 @@ setTimeout(forceBottomFix, 200);
 setTimeout(forceBottomFix, 800);
 setTimeout(forceBottomFix, 2000);
 window.addEventListener("resize", forceBottomFix);
-// visualViewport 全程监听（iOS 键盘弹/收触发）
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", forceBottomFix);
   window.visualViewport.addEventListener("scroll", forceBottomFix);
 }
-// 输入框聚焦 → scrollIntoView 兜底
+// 第二步：输入框聚焦 → scrollTop 封底 + scrollIntoView 兜底
 document.addEventListener("focusin", function(e) {
   if (!_shouldFix) return;
-  if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") {
+  if (e.target.tagName !== "TEXTAREA" && e.target.tagName !== "INPUT") return;
+  // 立刻滚动容器到最底部，抵消 iOS 自动上滚页面
+  var wrapper = document.getElementById("appWrapper");
+  if (wrapper) wrapper.scrollTop = wrapper.scrollHeight;
+  forceBottomFix();
+  var ba = document.getElementById("bottomArea");
+  if (ba) ba.scrollIntoView(false);
+  // 100ms 后重新计算偏移（iOS 键盘弹出有延迟，自动下拉留白需二次抵消）
+  setTimeout(function() {
+    if (wrapper) wrapper.scrollTop = wrapper.scrollHeight;
     forceBottomFix();
-    var ba = document.getElementById("bottomArea");
-    if (ba) { ba.scrollIntoView(false); }
-    setTimeout(function(){ forceBottomFix(); if (ba) ba.scrollIntoView(false); }, 150);
-    setTimeout(function(){ forceBottomFix(); if (ba) ba.scrollIntoView(false); }, 350);
-    setTimeout(forceBottomFix, 600);
-  }
+    if (ba) ba.scrollIntoView(false);
+  }, 100);
+  setTimeout(function(){ forceBottomFix(); if (ba) ba.scrollIntoView(false); }, 350);
+  setTimeout(forceBottomFix, 600);
 });
 document.addEventListener("focusout", function(e) {
   if (!_shouldFix) return;
-  if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") {
-    setTimeout(forceBottomFix, 100);
-    setTimeout(forceBottomFix, 300);
-    setTimeout(forceBottomFix, 600);
-  }
+  if (e.target.tagName !== "TEXTAREA" && e.target.tagName !== "INPUT") return;
+  setTimeout(function(){ resetBAOffset(); forceBottomFix(); }, 100);
+  setTimeout(forceBottomFix, 300);
+  setTimeout(forceBottomFix, 600);
 });
 init();
 

@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.4
+// 猪宝本地版 Service Worker v15.5
 // 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v15.4: 历史会话删除按钮样式统一为聊天卡片删除按钮(灰底透明无红框+按下变红)
-const CACHE = "zhubao-local-v15.4";
+// v15.5: 设置面板去提示文字+压缩间距，移动端(390x844)一屏显示全部无需下滑
+const CACHE = "zhubao-local-v15.5";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

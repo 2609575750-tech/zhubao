@@ -211,7 +211,10 @@
   .panel.show { display: flex; }
 
   /* 知识库 */
-  .kb-header { font-size: 17px; font-weight: 600; margin-bottom: 12px; }
+  .kb-header { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; margin-bottom: 12px; }
+  .kb-back { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border-light); background: var(--bg-white); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: all .2s; }
+  .kb-back:active { background: #F0F0F0; transform: scale(.92); }
+  .kb-back svg { width: 18px; height: 18px; }
   .kb-label { font-size: 13px; color: var(--text-tertiary); margin-bottom: 6px; }
   .kb-text { width: 100%; border: 1px solid var(--border-light); border-radius: 12px; padding: 12px; font: inherit; font-size: 14px; min-height: 90px; resize: vertical; background: var(--bg-white); }
   .kb-btn { width: 100%; margin-top: 10px; padding: 12px; border: none; border-radius: 12px; background: var(--brand-green); color: #fff; font-size: 15px; font-weight: 600; }
@@ -335,7 +338,12 @@
     </div>
   </div>
   <div class="panel" id="knowledgePanel">
-    <div class="kb-header">我的知识库</div>
+    <div class="kb-header">
+      <button class="kb-back" id="kbBack" aria-label="返回对话" title="返回对话">
+        <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <span>我的知识库</span>
+    </div>
     <div class="kb-label">把一段会话/对话粘贴进来，让猪宝帮你总结保存：</div>
     <textarea class="kb-text" id="kbInput" placeholder="例如：养殖户老王说猪场最近有5头仔猪腹泻，用了止泻药…"></textarea>
     <button class="kb-btn" id="kbSummarize">总结并保存</button>
@@ -1032,6 +1040,7 @@ async function renderKB() {
 
 /* ============ Tab 切换（对齐 vue-app 对话模式） ============ */
 let currentTab = "formPanel";
+let lastChatTab = "formPanel";   // 进入知识库前所在的聊天模式，用于“返回”回到原对话
 const panels = ["chatPanel", "knowledgePanel"];
 const tabGuides = {
   formPanel:     "表单模式：请描述今天的工作情况，我会帮你生成结构化工作记录表单。",
@@ -1039,22 +1048,26 @@ const tabGuides = {
   analysisPanel: "分析模式：请描述今天发现的问题，我会帮你深入分析原因。",
   knowledgePanel:"知识模式：请告诉我你想了解哪方面的养猪知识？",
 };
-function switchTab(tabId) {
+function switchTab(tabId, insertGuide = true) {
   currentTab = tabId;
+  // 记住进入知识库之前所在的聊天模式（表单/报告/分析），返回时回到这里
+  if (tabId !== "knowledgePanel") lastChatTab = tabId;
   // 面板显隐：chatPanel 和 knowledgePanel 二选一；表单/报告/分析切到 chatPanel
   const showChat = (tabId !== "knowledgePanel");
   panels.forEach(p => { const el = $("#" + p); el.classList.toggle("show", p === (showChat ? "chatPanel" : "knowledgePanel")); });
   $("#inputBar").style.display = showChat ? "" : "none";
   // Tab 按钮高亮
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tabId));
-  // 表单/报告/分析/知识 → 在聊天中插入引导消息
-  if (tabGuides[tabId]) {
+  // 表单/报告/分析/知识 → 在聊天中插入引导消息（返回对话时不再重复插入）
+  if (insertGuide && tabGuides[tabId]) {
     addMsg("ai", escapeHtml(tabGuides[tabId]));
     pushHistory("ai", tabGuides[tabId]);
     autoRead(tabGuides[tabId]);
   }
   if (tabId === "knowledgePanel") renderKB();
 }
+// 知识库返回按钮：回到进入知识库前的聊天模式，且不重复插入引导语
+$("#kbBack").onclick = () => switchTab(lastChatTab, false);
 
 /* ============ 事件绑定 ============ */
 $("#sendBtn").onclick = send;

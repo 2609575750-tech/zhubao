@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.6
+// 猪宝本地版 Service Worker v15.7
 // 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v15.6: 云端API模式下冷启动不再显示"正在加载模型库"(跳过loadLib)
-const CACHE = "zhubao-local-v15.6";
+// v15.7: 知识库页面顶部新增"返回对话"按钮，返回时不重复插入引导语
+const CACHE = "zhubao-local-v15.7";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

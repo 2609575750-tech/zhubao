@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="猪宝">
@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v15.22";
+window.APP_VERSION = "v15.23";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -1596,27 +1596,26 @@ async function init() {
   // 仅本地模式且已选模型才预加载库（未选模型时不加载任何东西，避免显示「正在加载模型库…」）
   if (!cfg.apiEnabled && cfg.modelChosen) { loadLib().catch(() => {}); }
 }
-/* ============ iOS PWA 底部实时动态校准（放弃 position:fixed，用 JS+flexbox） ============ */
-// 核心思路：iOS PWA standalone 的 position:fixed 有渲染 bug，CSS 怎么设都不对
-// 解决方案：JS 实时设置 html/body 高度=视口高度，body 用 flexbox 布局，bottom-area 靠 flex-shrink:0 推到底
-// 不用 fixed，不依赖 CSS 定位，纯靠 body 高度控制 + 持续动态校准
+/* ============ iOS PWA 底部精准锚定方案 ============ */
+// 核心原理：
+//   1. 全程监控 visualViewport 获取精确可视高度
+//   2. 实时覆盖 html/body 高度强制压缩内容区
+//   3. 输入框聚焦时 scrollIntoView 兜底锚定
+//   4. 300ms 轮询持续校准，覆盖 iOS 所有渲染偏移场景
 function forceBottomFix() {
-  // 优先用 visualViewport.height（iOS 上最准确的可见区域高度）
+  // 只以 visualViewport 为唯一真实来源（键盘弹起时它自动缩小）
   var vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
-  // 键盘弹起时 visualViewport.offsetTop > 0，需要补偿
-  var offsetTop = (window.visualViewport ? window.visualViewport.offsetTop : 0);
-  var realH = vh + offsetTop;
-  // 设置 html 和 body 高度 = 实际可见高度，让 flexbox 布局精确控制
-  document.documentElement.style.height = realH + "px";
-  document.body.style.height = realH + "px";
+  // 覆盖根容器高度，强制压缩内容区（flexbox 布局自动把底部推到压缩后的底部）
+  document.documentElement.style.height = vh + "px";
+  document.body.style.height = vh + "px";
   // 确保 body 是 flex column 布局
   document.body.style.display = "flex";
   document.body.style.flexDirection = "column";
   document.body.style.overflow = "hidden";
 }
-// 持续动态校准：每 300ms 检查一次，位置不对就修正（解决 iOS 渲染 bug 导致的偏移）
+// 持续动态校准 → 300ms 轮询（覆盖 iOS 底层渲染漂移）
 var fixTimer = setInterval(forceBottomFix, 300);
-// 多时机触发
+// 多时机初始化
 window.addEventListener("DOMContentLoaded", forceBottomFix);
 window.addEventListener("load", forceBottomFix);
 setTimeout(forceBottomFix, 50);
@@ -1625,16 +1624,29 @@ setTimeout(forceBottomFix, 800);
 setTimeout(forceBottomFix, 2000);
 window.addEventListener("resize", forceBottomFix);
 window.addEventListener("orientationchange", function(){ setTimeout(forceBottomFix, 200); setTimeout(forceBottomFix, 500); });
-// visualViewport 监听（iOS 键盘弹/收时触发）
+// visualViewport 全程监听（iOS 键盘弹/收、工具栏伸缩都触发）
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", forceBottomFix);
   window.visualViewport.addEventListener("scroll", forceBottomFix);
 }
-// 输入框焦点/失焦（iOS 键盘弹/收有延迟，多时机触发）
+// 输入框聚焦 → 键盘弹出 → scrollIntoView 兜底锚定底部模块
 document.addEventListener("focusin", function(e) {
   if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") {
-    setTimeout(forceBottomFix, 100);
-    setTimeout(forceBottomFix, 300);
+    // 先修正高度
+    forceBottomFix();
+    // scrollIntoView(false) 强制底部模块锚定可视区底部
+    // 抵消 iOS 自动上滚页面的原生行为
+    var ba = document.getElementById("bottomArea");
+    if (ba) { ba.scrollIntoView(false); }
+    // 键盘弹起有延迟，多轮次确保到位
+    setTimeout(function(){
+      forceBottomFix();
+      if (ba) ba.scrollIntoView(false);
+    }, 150);
+    setTimeout(function(){
+      forceBottomFix();
+      if (ba) ba.scrollIntoView(false);
+    }, 350);
     setTimeout(forceBottomFix, 600);
   }
 });

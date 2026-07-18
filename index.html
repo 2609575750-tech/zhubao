@@ -649,8 +649,9 @@ function selectBestVoice() {
     const sv = speechVoices.find(v => v.voiceURI === cfg.voiceURI);
     if (sv) return sv;
   }
-  // 优选列表只放女声明（Yunyang/Kangkang 为男声，已剔除）
-  const preferred = ["Tingting", "Ting-Ting", "Meijia", "Xiaoxiao", "Xiaoyi", "Yaoyao", "Sin-Ji", "Google 普通话", "Microsoft"];
+  // 优选列表只放女声明，越靠前越自然（接近 ChatGPT live 风格的自然女声）
+  // iOS: Mei-Jia(美佳)/Ting-Ting(婷婷) 最自然；微软 Xiaoxiao(小晓) 次之；其余兜底
+  const preferred = ["Mei-Jia", "Meijia", "Ting-Ting", "Tingting", "Xiaoxiao", "Yaoyao", "Sin-Ji", "Google 普通话", "Microsoft"];
   for (const name of preferred) {
     const v = speechVoices.find(v => v.name.includes(name));
     if (v) return v;

@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.27
+// 猪宝本地版 Service Worker v15.29
 // 策略：导航请求 network-first / 同源资源 cache-first / 跨域CDN network-first
-// v15.27: 修复padding-bottom双层叠加导致输入框离底过远
-const CACHE = "zhubao-local-v15.27";
+// v15.29: focus不抢iOS动画，400ms后统一校正，消除跳动
+const CACHE = "zhubao-local-v15.29";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v13
+// 猪宝本地版 Service Worker v14
 // 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v13: 新增云端API设置(DeepSeek/豆包/OpenAI/通义) + 模型名自动填地址 + CORS代理
-const CACHE = "zhubao-local-v13";
+// v14: 厂商切换自动填最优模型+地址+展开该厂商全部模型(datalist)
+const CACHE = "zhubao-local-v14";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

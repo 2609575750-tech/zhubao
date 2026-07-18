@@ -424,8 +424,9 @@
           <option value="qwen">通义千问</option>
           <option value="custom">自定义（OpenAI 兼容）</option>
         </select>
-        <label>模型名称（输入即自动填地址）</label>
-        <input id="apiModel" placeholder="deepseek-chat" autocomplete="off" />
+        <label>模型名称（选厂商后自动填最优模型；点输入框可展开该厂商全部模型）</label>
+        <input id="apiModel" placeholder="deepseek-v4-flash" autocomplete="off" list="apiModelList" />
+        <datalist id="apiModelList"></datalist>
         <label>API 地址</label>
         <input id="apiUrl" placeholder="https://api.deepseek.com/chat/completions" autocomplete="off" />
         <label>API Key</label>
@@ -433,7 +434,7 @@
         <label>代理地址（可选，CORS 被拦时填你自己的代理）</label>
         <input id="apiProxy" placeholder="留空直连；或 https://你的代理/?url={url}" autocomplete="off" />
         <button class="api-test-btn" id="apiTestBtn" type="button">测试连接</button>
-        <p class="note">豆包需填「方舟推理接入点 ID」（如 ep-xxxx），不是模型名。多数厂商浏览器直连会被 CORS 拦截；若报 CORS 错误，请自建一个代理填入『代理地址』。</p>
+        <p class="note">豆包：模型名填「模型ID」（如 doubao-seed-1-6-251015）或方舟「推理接入点 ID」（ep-xxxx），两者都行。选厂商后会自动填最优模型，点模型输入框可展开该厂商全部模型。多数厂商浏览器直连会被 CORS 拦截；若报 CORS 错误，请自建代理填入『代理地址』。</p>
       </div>
 
       <button id="saveSetup">保存</button>
@@ -476,11 +477,29 @@ function currentModelId() {
 
 /* ============ 云端 API（OpenAI 兼容 / 流式 SSE） ============ */
 const API_PRESETS = {
-  deepseek: { label: "DeepSeek", url: "https://api.deepseek.com/chat/completions", ph: "deepseek-chat", keyph: "sk-...（DeepSeek 控制台获取）" },
-  doubao:   { label: "豆包（火山方舟）", url: "https://ark.cn-beijing.volces.com/api/v3/chat/completions", ph: "ep-xxxx（方舟推理接入点 ID）", keyph: "火山引擎方舟 API Key" },
-  openai:   { label: "OpenAI", url: "https://api.openai.com/v1/chat/completions", ph: "gpt-4o-mini", keyph: "sk-...（OpenAI 平台获取）" },
-  qwen:     { label: "通义千问", url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", ph: "qwen-plus", keyph: "sk-...（阿里云百炼平台获取）" },
-  custom:   { label: "自定义（OpenAI 兼容）", url: "", ph: "模型名称", keyph: "API Key" }
+  deepseek: {
+    label: "DeepSeek", url: "https://api.deepseek.com/chat/completions",
+    recommended: "deepseek-v4-flash", keyph: "sk-...（DeepSeek 控制台获取）",
+    models: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat（2026-07-24停用）", "deepseek-reasoner（2026-07-24停用）"]
+  },
+  doubao: {
+    label: "豆包（火山方舟）", url: "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+    recommended: "doubao-seed-1-6-251015", keyph: "火山引擎方舟 API Key",
+    models: ["doubao-seed-2-0-pro-260215", "doubao-seed-1-8-251228", "doubao-seed-1-6-251015", "doubao-seed-1-6-flash-250828", "doubao-seed-1-6-lite-251015", "doubao-1.5-pro-32k", "doubao-1.5-lite-32k"]
+  },
+  openai: {
+    label: "OpenAI", url: "https://api.openai.com/v1/chat/completions",
+    recommended: "gpt-5.4", keyph: "sk-...（OpenAI 平台获取）",
+    models: ["gpt-5.5", "gpt-5.5-pro", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-4.1", "o3"]
+  },
+  qwen: {
+    label: "通义千问", url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+    recommended: "qwen-plus", keyph: "sk-...（阿里云百炼平台获取）",
+    models: ["qwen-max", "qwen-plus", "qwen-turbo", "qwen-long", "qwen-flash", "qwq-plus"]
+  },
+  custom: {
+    label: "自定义（OpenAI 兼容）", url: "", recommended: "", keyph: "API Key", models: []
+  }
 };
 // 输入模型名 → 自动识别厂商并回填地址
 function guessProvider(name) {
@@ -1265,6 +1284,7 @@ function openSetup() {
   $("#apiUrl").value = cfg.apiUrl;
   $("#apiKey").value = cfg.apiKey;
   $("#apiProxy").value = cfg.apiProxy;
+  fillModelList(cfg.apiProvider);
   refreshApiUI();
   $("#setup").classList.add("open");
 }
@@ -1275,12 +1295,20 @@ function refreshApiUI() {
 $("#modelSize").onchange = e => { $("#customModel").style.display = e.target.value === "custom" ? "block" : "none"; };
 // 云端 API：开关 / 厂商切换 / 模型名自动识别厂商填地址 / 测试连接
 $("#apiEnabled").onclick = () => { $("#apiEnabled").classList.toggle("on"); refreshApiUI(); };
+function fillModelList(provider) {
+  const p = API_PRESETS[provider];
+  const dl = $("#apiModelList");
+  if (!dl) return;
+  dl.innerHTML = (p && p.models ? p.models : []).map(m => `<option value="${m}">`).join("");
+}
 $("#apiProvider").onchange = e => {
   const p = API_PRESETS[e.target.value];
   if (p) {
     $("#apiUrl").value = p.url;
-    $("#apiModel").setAttribute("placeholder", p.ph);
+    if (p.recommended) $("#apiModel").value = p.recommended; // 自动填最优模型
+    $("#apiModel").setAttribute("placeholder", p.recommended || "模型名称");
     $("#apiKey").setAttribute("placeholder", p.keyph);
+    fillModelList(e.target.value); // 展开该厂商全部模型
   }
 };
 $("#apiModel").oninput = e => {
@@ -1289,6 +1317,7 @@ $("#apiModel").oninput = e => {
     $("#apiProvider").value = p;
     $("#apiUrl").value = API_PRESETS[p].url;
     $("#apiKey").setAttribute("placeholder", API_PRESETS[p].keyph);
+    fillModelList(p);
   }
 };
 $("#apiTestBtn").onclick = async () => {

@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v15.19";
+window.APP_VERSION = "v15.21";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -1595,6 +1595,58 @@ async function init() {
   // 仅本地模式且已选模型才预加载库（未选模型时不加载任何东西，避免显示「正在加载模型库…」）
   if (!cfg.apiEnabled && cfg.modelChosen) { loadLib().catch(() => {}); }
 }
+/* ============ iOS 底部强制贴底（绕过 CSS fixed bug + 键盘适配） ============ */
+// iOS Safari 的 position:fixed;bottom:0 在 100dvh/-webkit-fill-available 不准时会失效
+// 键盘弹出时 innerHeight 变小，需要实时重新计算
+function forceBottomFix() {
+  var ba = document.getElementById("bottomArea");
+  if (!ba) return;
+  // 优先用 visualViewport（iOS 上最准确的可见区域），回退 innerHeight
+  var vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+  var bh = ba.offsetHeight;
+  // 动态赋值 bottom 强制贴底（不用 CSS 的 bottom:0，绕过 iOS fixed bug）
+  ba.style.position = "fixed";
+  ba.style.top = "auto";
+  ba.style.bottom = "0px";
+  ba.style.left = "0px";
+  ba.style.right = "0px";
+  // 安全区高度：从 CSS 计算的 padding-bottom 读取（env(safe-area-inset-bottom) 的实际值）
+  var cs = getComputedStyle(ba);
+  var safeBottom = parseInt(cs.paddingBottom) || 0;
+  // 如果 visualViewport 有 offsetTop（键盘弹起时），需要减去偏移
+  var offsetTop = (window.visualViewport ? window.visualViewport.offsetTop : 0);
+  // 同步修正 body 高度，防止内容区溢出或留白
+  document.documentElement.style.height = (vh + offsetTop) + "px";
+  document.body.style.height = (vh + offsetTop) + "px";
+}
+// 多时机触发，确保各种加载阶段都修正
+window.addEventListener("DOMContentLoaded", forceBottomFix);
+window.addEventListener("load", forceBottomFix);
+setTimeout(forceBottomFix, 100);
+setTimeout(forceBottomFix, 500);
+setTimeout(forceBottomFix, 2000);
+window.addEventListener("resize", forceBottomFix);
+window.addEventListener("orientationchange", function(){ setTimeout(forceBottomFix, 300); });
+// visualViewport 是 iOS 上最准确的视口尺寸来源（键盘弹/收时触发）
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", forceBottomFix);
+  window.visualViewport.addEventListener("scroll", forceBottomFix);
+}
+// 输入框焦点/失焦时重新计算（iOS 键盘弹/收有延迟，多时机触发）
+document.addEventListener("focusin", function(e) {
+  if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") {
+    setTimeout(forceBottomFix, 100);
+    setTimeout(forceBottomFix, 300);
+    setTimeout(forceBottomFix, 500);
+  }
+});
+document.addEventListener("focusout", function(e) {
+  if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") {
+    setTimeout(forceBottomFix, 100);
+    setTimeout(forceBottomFix, 300);
+    setTimeout(forceBottomFix, 500);
+  }
+});
 init();
 
 /* ============ PWA SW ============ */

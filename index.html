@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v15.21";
+window.APP_VERSION = "v15.22";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -179,14 +179,15 @@ window.APP_VERSION = "v15.21";
     background: var(--bg-page); padding: 2px 12px;
     padding-bottom: calc(2px + env(safe-area-inset-bottom)); flex-shrink: 0; width: 100%;
   }
-  /* ===== 底部区域容器（position:fixed 强制钉在屏幕底部，不受iOS 100dvh影响） ===== */
+  /* ===== 底部区域容器（不用position:fixed，靠JS控制body高度+flexbox推底） ===== */
   .bottom-area {
-    position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+    flex-shrink: 0;
     background: var(--bg-page);
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: calc(env(safe-area-inset-bottom) + 6px);
+    z-index: 10;
   }
-  /* 给内容区留出底部空间，避免被fixed的bottom-area遮挡 */
-  #chatPanel, #knowledgePanel { padding-bottom: 130px !important; }
+  /* 内容区可滚动，不被底部遮挡 */
+  #chatPanel, #knowledgePanel { padding-bottom: 8px !important; }
   /* 模型下载状态提示条 */
   .model-dl-hint {
     display: flex; align-items: center; gap: 6px;
@@ -1595,56 +1596,53 @@ async function init() {
   // 仅本地模式且已选模型才预加载库（未选模型时不加载任何东西，避免显示「正在加载模型库…」）
   if (!cfg.apiEnabled && cfg.modelChosen) { loadLib().catch(() => {}); }
 }
-/* ============ iOS 底部强制贴底（绕过 CSS fixed bug + 键盘适配） ============ */
-// iOS Safari 的 position:fixed;bottom:0 在 100dvh/-webkit-fill-available 不准时会失效
-// 键盘弹出时 innerHeight 变小，需要实时重新计算
+/* ============ iOS PWA 底部实时动态校准（放弃 position:fixed，用 JS+flexbox） ============ */
+// 核心思路：iOS PWA standalone 的 position:fixed 有渲染 bug，CSS 怎么设都不对
+// 解决方案：JS 实时设置 html/body 高度=视口高度，body 用 flexbox 布局，bottom-area 靠 flex-shrink:0 推到底
+// 不用 fixed，不依赖 CSS 定位，纯靠 body 高度控制 + 持续动态校准
 function forceBottomFix() {
-  var ba = document.getElementById("bottomArea");
-  if (!ba) return;
-  // 优先用 visualViewport（iOS 上最准确的可见区域），回退 innerHeight
+  // 优先用 visualViewport.height（iOS 上最准确的可见区域高度）
   var vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
-  var bh = ba.offsetHeight;
-  // 动态赋值 bottom 强制贴底（不用 CSS 的 bottom:0，绕过 iOS fixed bug）
-  ba.style.position = "fixed";
-  ba.style.top = "auto";
-  ba.style.bottom = "0px";
-  ba.style.left = "0px";
-  ba.style.right = "0px";
-  // 安全区高度：从 CSS 计算的 padding-bottom 读取（env(safe-area-inset-bottom) 的实际值）
-  var cs = getComputedStyle(ba);
-  var safeBottom = parseInt(cs.paddingBottom) || 0;
-  // 如果 visualViewport 有 offsetTop（键盘弹起时），需要减去偏移
+  // 键盘弹起时 visualViewport.offsetTop > 0，需要补偿
   var offsetTop = (window.visualViewport ? window.visualViewport.offsetTop : 0);
-  // 同步修正 body 高度，防止内容区溢出或留白
-  document.documentElement.style.height = (vh + offsetTop) + "px";
-  document.body.style.height = (vh + offsetTop) + "px";
+  var realH = vh + offsetTop;
+  // 设置 html 和 body 高度 = 实际可见高度，让 flexbox 布局精确控制
+  document.documentElement.style.height = realH + "px";
+  document.body.style.height = realH + "px";
+  // 确保 body 是 flex column 布局
+  document.body.style.display = "flex";
+  document.body.style.flexDirection = "column";
+  document.body.style.overflow = "hidden";
 }
-// 多时机触发，确保各种加载阶段都修正
+// 持续动态校准：每 300ms 检查一次，位置不对就修正（解决 iOS 渲染 bug 导致的偏移）
+var fixTimer = setInterval(forceBottomFix, 300);
+// 多时机触发
 window.addEventListener("DOMContentLoaded", forceBottomFix);
 window.addEventListener("load", forceBottomFix);
-setTimeout(forceBottomFix, 100);
-setTimeout(forceBottomFix, 500);
+setTimeout(forceBottomFix, 50);
+setTimeout(forceBottomFix, 200);
+setTimeout(forceBottomFix, 800);
 setTimeout(forceBottomFix, 2000);
 window.addEventListener("resize", forceBottomFix);
-window.addEventListener("orientationchange", function(){ setTimeout(forceBottomFix, 300); });
-// visualViewport 是 iOS 上最准确的视口尺寸来源（键盘弹/收时触发）
+window.addEventListener("orientationchange", function(){ setTimeout(forceBottomFix, 200); setTimeout(forceBottomFix, 500); });
+// visualViewport 监听（iOS 键盘弹/收时触发）
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", forceBottomFix);
   window.visualViewport.addEventListener("scroll", forceBottomFix);
 }
-// 输入框焦点/失焦时重新计算（iOS 键盘弹/收有延迟，多时机触发）
+// 输入框焦点/失焦（iOS 键盘弹/收有延迟，多时机触发）
 document.addEventListener("focusin", function(e) {
   if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") {
     setTimeout(forceBottomFix, 100);
     setTimeout(forceBottomFix, 300);
-    setTimeout(forceBottomFix, 500);
+    setTimeout(forceBottomFix, 600);
   }
 });
 document.addEventListener("focusout", function(e) {
   if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") {
     setTimeout(forceBottomFix, 100);
     setTimeout(forceBottomFix, 300);
-    setTimeout(forceBottomFix, 500);
+    setTimeout(forceBottomFix, 600);
   }
 });
 init();

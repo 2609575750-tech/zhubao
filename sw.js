@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.23
+// 猪宝本地版 Service Worker v15.24
 // 策略：导航请求 network-first / 同源资源 cache-first / 跨域CDN network-first
-// v15.23: interactive-widget=resizes-content + visualViewport全程同步 + scrollIntoView兜底锚定
-const CACHE = "zhubao-local-v15.23";
+// v15.24: 全屏滚动容器架构(appWrapper) + transform:translateZ(0)硬件加速
+const CACHE = "zhubao-local-v15.24";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

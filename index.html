@@ -241,6 +241,11 @@
   .setup-box button { width: 100%; padding: 12px; border: none; border-radius: 12px; background: var(--brand-green); color: #fff; font-size: 15px; font-weight: 600; }
   .setup-box button:active { background: var(--brand-green-dark); }
   .setup-box .clear-btn { background: #FF3B30; margin-top: 8px; }
+  .setup-divider { display: flex; align-items: center; color: var(--text-tertiary); font-size: 12px; margin: 20px 0 14px; }
+  .setup-divider::before, .setup-divider::after { content: ""; flex: 1; height: 0.5px; background: var(--border-light); }
+  .setup-divider span { padding: 0 10px; }
+  .setup-box .api-test-btn { background: #007AFF; margin-bottom: 6px; }
+  .setup-box .api-test-btn:active { background: #0062cc; }
 
   /* ===== 历史抽屉（汉堡弹出，对齐 vue-app） ===== */
   .sidemask { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 45; opacity: 0; pointer-events: none; transition: opacity .25s; }
@@ -401,7 +406,36 @@
         <option value="webgpu" selected>WebGPU（iOS17.4+ Safari，快）</option>
         <option value="wasm">WASM（兼容旧设备，慢）</option>
       </select>
-      <p class="note">提示：首次需联网下载模型文件，下载完成后可离线使用。镜像默认用 hf-mirror.com（国内直连，无需 VPN）。1.5B 是最强通用对话模型；3B代码版仅适合写代码；自定义可填其他 ONNX 模型ID。</p>
+      <p class="note">提示：首次需联网下载模型文件，下载完成后可离线使用。镜像默认用 hf-mirror.com（国内直连，无需 VPN）。1.5B 是最强通用对话模型；3B代码版仅适合写代码；自定义可填其他 ONNX 模型ID。<b>启用下方「云端 API」后，本地模型设置不生效。</b></p>
+
+      <div class="setup-divider"><span>或连接云端 API（免下载，直接调用）</span></div>
+
+      <div class="toggle-row">
+        <span>使用云端 API</span>
+        <div class="switch" id="apiEnabled"></div>
+      </div>
+
+      <div id="apiBox" style="display:none">
+        <label>厂商</label>
+        <select id="apiProvider">
+          <option value="deepseek">DeepSeek</option>
+          <option value="doubao">豆包（火山方舟）</option>
+          <option value="openai">OpenAI</option>
+          <option value="qwen">通义千问</option>
+          <option value="custom">自定义（OpenAI 兼容）</option>
+        </select>
+        <label>模型名称（输入即自动填地址）</label>
+        <input id="apiModel" placeholder="deepseek-chat" autocomplete="off" />
+        <label>API 地址</label>
+        <input id="apiUrl" placeholder="https://api.deepseek.com/chat/completions" autocomplete="off" />
+        <label>API Key</label>
+        <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" />
+        <label>代理地址（可选，CORS 被拦时填你自己的代理）</label>
+        <input id="apiProxy" placeholder="留空直连；或 https://你的代理/?url={url}" autocomplete="off" />
+        <button class="api-test-btn" id="apiTestBtn" type="button">测试连接</button>
+        <p class="note">豆包需填「方舟推理接入点 ID」（如 ep-xxxx），不是模型名。多数厂商浏览器直连会被 CORS 拦截；若报 CORS 错误，请自建一个代理填入『代理地址』。</p>
+      </div>
+
       <button id="saveSetup">保存</button>
       <button class="clear-btn" id="clearChatBtn">清空对话</button>
     </div>
@@ -419,14 +453,102 @@ const MODEL_MAP = {
   "1.5B":  "onnx-community/Qwen2.5-1.5B-Instruct",
   "3B代码": "onnx-community/Qwen2.5-Coder-3B-Instruct"
 };
-let cfg = JSON.parse(localStorage.getItem(LS_CFG) || "null") || {
-  model: "1.5B", customModel: "", mirror: "https://hf-mirror.com",
-  device: /iPhone|iPad|iPod/i.test(navigator.userAgent) ? "wasm" : "webgpu"
-};
+function defaultCfg() {
+  return {
+    model: "1.5B", customModel: "", mirror: "https://hf-mirror.com",
+    device: /iPhone|iPad|iPod/i.test(navigator.userAgent) ? "wasm" : "webgpu",
+    // 云端 API 配置（免下载，直接调用厂商接口）
+    apiEnabled: false,
+    apiProvider: "deepseek",
+    apiModel: "deepseek-chat",
+    apiUrl: "https://api.deepseek.com/chat/completions",
+    apiKey: "",
+    apiProxy: ""
+  };
+}
+// 合并旧配置：已存字段覆盖默认值，缺失字段自动补默认（避免旧用户丢字段）
+let cfg = Object.assign(defaultCfg(), JSON.parse(localStorage.getItem(LS_CFG) || "null") || {});
 const saveCfg = () => localStorage.setItem(LS_CFG, JSON.stringify(cfg));
 function currentModelId() {
   if (cfg.model === "custom") return cfg.customModel.trim() || MODEL_MAP["1.5B"];
   return MODEL_MAP[cfg.model] || MODEL_MAP["1.5B"];
+}
+
+/* ============ 云端 API（OpenAI 兼容 / 流式 SSE） ============ */
+const API_PRESETS = {
+  deepseek: { label: "DeepSeek", url: "https://api.deepseek.com/chat/completions", ph: "deepseek-chat", keyph: "sk-...（DeepSeek 控制台获取）" },
+  doubao:   { label: "豆包（火山方舟）", url: "https://ark.cn-beijing.volces.com/api/v3/chat/completions", ph: "ep-xxxx（方舟推理接入点 ID）", keyph: "火山引擎方舟 API Key" },
+  openai:   { label: "OpenAI", url: "https://api.openai.com/v1/chat/completions", ph: "gpt-4o-mini", keyph: "sk-...（OpenAI 平台获取）" },
+  qwen:     { label: "通义千问", url: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", ph: "qwen-plus", keyph: "sk-...（阿里云百炼平台获取）" },
+  custom:   { label: "自定义（OpenAI 兼容）", url: "", ph: "模型名称", keyph: "API Key" }
+};
+// 输入模型名 → 自动识别厂商并回填地址
+function guessProvider(name) {
+  const n = (name || "").toLowerCase();
+  if (n.includes("deepseek")) return "deepseek";
+  if (n.includes("doubao") || n.includes("豆包") || n.includes("ark") || n.includes("ep-")) return "doubao";
+  if (n.includes("gpt") || n.includes("openai")) return "openai";
+  if (n.includes("qwen") || n.includes("通义") || n.includes("dashscope")) return "qwen";
+  return cfg.apiProvider || "custom";
+}
+// 拼接最终请求地址（支持代理：{url} 占位 或 ?url= 拼接）
+function buildApiUrl() {
+  const base = (cfg.apiUrl || "").trim();
+  const proxy = (cfg.apiProxy || "").trim();
+  if (!proxy) return base;
+  if (proxy.includes("{url}")) return proxy.replace("{url}", encodeURIComponent(base));
+  return proxy + (proxy.includes("?") ? "&" : "?") + "url=" + encodeURIComponent(base);
+}
+async function runModelCloud(messages, onToken) {
+  if (!cfg.apiKey) throw new Error("未填写 API Key，请到设置 → 云端 API 填写");
+  const url = buildApiUrl();
+  if (!url) throw new Error("API 地址为空，请到设置 → 云端 API 填写");
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + cfg.apiKey },
+      body: JSON.stringify({ model: cfg.apiModel || "", messages, stream: true })
+    });
+  } catch (e) {
+    throw new Error("网络/CORS 错误：" + (e.message || e) + "（浏览器直连多数厂商会被 CORS 拦截，请在『代理地址』填你自己的代理）");
+  }
+  if (!res.ok) {
+    let detail = "";
+    try { const j = await res.json(); detail = j.error?.message || j.message || JSON.stringify(j).slice(0, 120); } catch {}
+    throw new Error("API 返回 " + res.status + (detail ? "：" + detail : "") + "（检查 Key / 模型名 / 地址）");
+  }
+  // 流式解析（SSE：data: {...}）
+  if (res.body) {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let acc = "", buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") continue;
+        try {
+          const json = JSON.parse(data);
+          const delta = json.choices?.[0]?.delta?.content || "";
+          if (delta) { acc += delta; onToken(acc); }
+        } catch {}
+      }
+    }
+    if (!acc) throw new Error("API 返回为空（可能模型名/地址不对）");
+    return acc;
+  }
+  // 非流式兜底
+  const j = await res.json();
+  const txt = j.choices?.[0]?.message?.content || "";
+  if (!txt) throw new Error("API 返回为空（可能模型名/地址不对）");
+  return txt;
 }
 
 /* ============ 多会话历史（对齐 vue-app） ============ */
@@ -694,6 +816,7 @@ async function runModel(messages, onToken) {
     for (const ch of text) { onToken(text.slice(0, text.indexOf(ch) + 1)); await new Promise(r => setTimeout(r, 3)); }
     return text;
   }
+  if (cfg.apiEnabled) return await runModelCloud(messages, onToken);
   const { TextStreamer } = await loadLib();
   const gen = await ensureModel();
   let acc = "";
@@ -792,8 +915,8 @@ async function send() {
   const ta = $("#input"), text = ta.value.trim();
   if (!text) return;
   if (busy && !modelLoading) return; // 非下载中且正在回复 → 拦截
-  // 如果模型还在下载，把消息排队，等下完自动发送
-  if (modelLoading && (!generator)) {
+  // 如果本地模型还在下载，把消息排队，等下完自动发送（云端 API 不触发此逻辑）
+  if (!cfg.apiEnabled && modelLoading && (!generator)) {
     busy = false;
     ta.value = ""; ta.style.height = "auto";
     refreshInputBtns();
@@ -1135,22 +1258,79 @@ function openSetup() {
   $("#customModel").style.display = cfg.model === "custom" ? "block" : "none";
   $("#mirror").value = cfg.mirror;
   $("#device").value = cfg.device;
+  // 云端 API 字段回填
+  $("#apiEnabled").classList.toggle("on", !!cfg.apiEnabled);
+  $("#apiProvider").value = cfg.apiProvider;
+  $("#apiModel").value = cfg.apiModel;
+  $("#apiUrl").value = cfg.apiUrl;
+  $("#apiKey").value = cfg.apiKey;
+  $("#apiProxy").value = cfg.apiProxy;
+  refreshApiUI();
   $("#setup").classList.add("open");
 }
+function refreshApiUI() {
+  const on = $("#apiEnabled").classList.contains("on");
+  $("#apiBox").style.display = on ? "block" : "none";
+}
 $("#modelSize").onchange = e => { $("#customModel").style.display = e.target.value === "custom" ? "block" : "none"; };
+// 云端 API：开关 / 厂商切换 / 模型名自动识别厂商填地址 / 测试连接
+$("#apiEnabled").onclick = () => { $("#apiEnabled").classList.toggle("on"); refreshApiUI(); };
+$("#apiProvider").onchange = e => {
+  const p = API_PRESETS[e.target.value];
+  if (p) {
+    $("#apiUrl").value = p.url;
+    $("#apiModel").setAttribute("placeholder", p.ph);
+    $("#apiKey").setAttribute("placeholder", p.keyph);
+  }
+};
+$("#apiModel").oninput = e => {
+  const p = guessProvider(e.target.value);
+  if (p && p !== "custom" && API_PRESETS[p]) {
+    $("#apiProvider").value = p;
+    $("#apiUrl").value = API_PRESETS[p].url;
+    $("#apiKey").setAttribute("placeholder", API_PRESETS[p].keyph);
+  }
+};
+$("#apiTestBtn").onclick = async () => {
+  const btn = $("#apiTestBtn"); btn.disabled = true; btn.textContent = "测试中…";
+  try {
+    cfg.apiProvider = $("#apiProvider").value;
+    cfg.apiModel = $("#apiModel").value.trim();
+    cfg.apiUrl = $("#apiUrl").value.trim();
+    cfg.apiKey = $("#apiKey").value.trim();
+    cfg.apiProxy = $("#apiProxy").value.trim();
+    saveCfg();
+    const r = await runModelCloud([{ role: "system", content: "你是助手" }, { role: "user", content: "你好，只回复 OK 两个字" }], () => {});
+    if (r && r.trim()) toast("✅ 连接成功：" + r.trim().slice(0, 30));
+    else toast("⚠️ 返回为空，检查模型名/地址");
+  } catch (e) { toast("❌ " + (e.message || e).slice(0, 100)); }
+  finally { btn.disabled = false; btn.textContent = "测试连接"; }
+};
 $("#saveSetup").onclick = () => {
   cfg.model = $("#modelSize").value; cfg.customModel = $("#customModel").value.trim();
   cfg.mirror = $("#mirror").value; cfg.device = $("#device").value;
+  // 云端 API 字段
+  cfg.apiEnabled = $("#apiEnabled").classList.contains("on");
+  cfg.apiProvider = $("#apiProvider").value;
+  cfg.apiModel = $("#apiModel").value.trim();
+  cfg.apiUrl = $("#apiUrl").value.trim();
+  cfg.apiKey = $("#apiKey").value.trim();
+  cfg.apiProxy = $("#apiProxy").value.trim();
   saveCfg(); generator = null;
   $("#setup").classList.remove("open");
-  toast("已保存，下次发消息用新模型");
+  toast(cfg.apiEnabled ? "已保存，已启用云端 API" : "已保存，下次发消息用新模型");
   updateModelPickText();
-  setStatus("模型已切换，将重新加载", "loading");
+  setStatus(cfg.apiEnabled ? ("云端 API · " + (API_PRESETS[cfg.apiProvider]?.label || cfg.apiProvider)) : "模型已切换，将重新加载", cfg.apiEnabled ? "ok" : "loading");
 };
 $("#clearChatBtn").onclick = () => { if (!confirm("确定清空对话？")) return; clearChat(); $("#setup").classList.remove("open"); };
 
 // 模型选择器文字
 function updateModelPickText() {
+  if (cfg.apiEnabled) {
+    $("#modelLabel").textContent = "云端·" + (cfg.apiModel || API_PRESETS[cfg.apiProvider]?.label || cfg.apiProvider) + " >";
+    setStatus("云端 API · " + (API_PRESETS[cfg.apiProvider]?.label || cfg.apiProvider), "ok");
+    return;
+  }
   const name = cfg.model === "custom" ? (cfg.customModel.split("/").pop() || "自定义") : cfg.model;
   $("#modelLabel").textContent = name + " · " + (cfg.device === "webgpu" ? "WebGPU" : "WASM") + " >";
 }
@@ -1180,7 +1360,13 @@ function clearChat() {
   hero.innerHTML = `<div class="pig-wrap"><svg viewBox="0 0 120 120" aria-hidden="true"><path d="M30 38 L23 13 L51 30 Z" fill="#FFB3C1"/><path d="M90 38 L97 13 L69 30 Z" fill="#FFB3C1"/><path d="M33 34 L30 22 L45 30 Z" fill="#FF8FA3"/><path d="M87 34 L90 22 L75 30 Z" fill="#FF8FA3"/><ellipse cx="60" cy="66" rx="42" ry="38" fill="#FFC2D1"/><circle cx="36" cy="74" r="7" fill="#FF9EB5" opacity="0.55"/><circle cx="84" cy="74" r="7" fill="#FF9EB5" opacity="0.55"/><ellipse cx="46" cy="60" rx="5" ry="6.5" fill="#3A2E2E"/><ellipse cx="74" cy="60" rx="5" ry="6.5" fill="#3A2E2E"/><circle cx="47.6" cy="57.4" r="1.6" fill="#fff"/><circle cx="75.6" cy="57.4" r="1.6" fill="#fff"/><ellipse cx="60" cy="80" rx="15" ry="11" fill="#FF9EB5"/><ellipse cx="54" cy="80" rx="2.6" ry="4" fill="#C96B82"/><ellipse cx="66" cy="80" rx="2.6" ry="4" fill="#C96B82"/><path d="M52 92 Q60 98 68 92" stroke="#C96B82" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg></div><h1 class="greeting">Hi，今天从哪里开始？</h1>`;
   chatEl.appendChild(hero);
 }
-async function preloadModel() { if (generator) { toast("模型已就绪"); return; } if (modelLoading) { toast("正在加载中…"); return; } setStatus("加载模型中…", "loading"); try { await ensureModel(); } catch (e) { setStatus("加载失败：" + (e.message || e), "bad"); toast("加载失败：" + (e.message || e)); } }
+async function preloadModel() {
+  if (cfg.apiEnabled) { setStatus("云端 API · " + (API_PRESETS[cfg.apiProvider]?.label || cfg.apiProvider), "ok"); toast("已启用云端 API"); return; }
+  if (generator) { toast("模型已就绪"); return; }
+  if (modelLoading) { toast("正在加载中…"); return; }
+  setStatus("加载模型中…", "loading");
+  try { await ensureModel(); } catch (e) { setStatus("加载失败：" + (e.message || e), "bad"); toast("加载失败：" + (e.message || e)); }
+}
 
 /* ============ Toast & Status ============ */
 let toastTimer;
@@ -1197,7 +1383,8 @@ async function init() {
   refreshInputBtns();
   let gpu = false;
   try { gpu = !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch {}
-  if (!gpu && cfg.device === "webgpu") { setStatus("本机不支持 WebGPU，建议设置里切 WASM", "bad"); }
+  if (cfg.apiEnabled) { setStatus("云端 API · " + (API_PRESETS[cfg.apiProvider]?.label || cfg.apiProvider), "ok"); }
+  else if (!gpu && cfg.device === "webgpu") { setStatus("本机不支持 WebGPU，建议设置里切 WASM", "bad"); }
   else { setStatus("未加载模型 · 发消息自动加载", "loading"); }
 
   const msgs = activeSession().messages;

@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.17
-// 策略：导航请求 network-first（保证及时更新）/ 同源资源 cache-first / 跨域CDN network-first
-// v15.17: 修复PWA缓存导致用户看不到更新——导航请求改network-first + 自动刷新+定期检查更新
-const CACHE = "zhubao-local-v15.17";
+// 猪宝本地版 Service Worker v15.18
+// 策略：导航请求 network-first / 同源资源 cache-first / 跨域CDN network-first
+// v15.18: 底部区域改用position:fixed强制贴底（不受iOS 100dvh/-webkit-fill-available影响）
+const CACHE = "zhubao-local-v15.18";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

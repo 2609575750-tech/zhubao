@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v15.24";
+window.APP_VERSION = "v15.25";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -1605,25 +1605,37 @@ async function init() {
   // 仅本地模式且已选模型才预加载库（未选模型时不加载任何东西，避免显示「正在加载模型库…」）
   if (!cfg.apiEnabled && cfg.modelChosen) { loadLib().catch(() => {}); }
 }
-/* ============ iOS PWA 底部精准锚定方案 ============ */
+/* ============ iOS PWA 底部精准锚定方案（仅 iPhone 16 Pro / 17 Air 执行） ============ */
 // 核心原理：
-//   1. 全程监控 visualViewport 获取精确可视高度
-//   2. 实时覆盖 html/body 高度强制压缩内容区
-//   3. 输入框聚焦时 scrollIntoView 兜底锚定
-//   4. 300ms 轮询持续校准，覆盖 iOS 所有渲染偏移场景
+//   1. 仅竖屏，删除横竖屏切换监听减抖动
+//   2. 加设备判断，只给 iPhone16 Pro / 17 Air 执行修复
+//   3. 全程监控 visualViewport 获取精确可视高度
+//   4. 输入框聚焦时 scrollIntoView 兜底锚定
+//   5. 300ms 轮询持续校准，覆盖 iOS 所有渲染偏移场景
+function isTargetDevice() {
+  // 只对 iOS 设备执行
+  if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) return false;
+  var w = window.screen.width;
+  var h = window.screen.height;
+  var min = Math.min(w, h);
+  var max = Math.max(w, h);
+  // iPhone 16 Pro: 393×852 | iPhone 17 Air: 402×874
+  return (min === 393 && max === 852) || (min === 402 && max === 874);
+}
+var _shouldFix = isTargetDevice();
 function forceBottomFix() {
+  if (!_shouldFix) return;
   // 只以 visualViewport 为唯一真实来源（键盘弹起时它自动缩小）
   var vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
   // 修改 wrapper 高度 = 可视高度（覆盖 CSS 的 100vh fallback）
-  // wrapper 内部 flexbox 布局自动把 bottom-area 推到底部
   var wrapper = document.getElementById("appWrapper");
   if (wrapper) wrapper.style.height = vh + "px";
   // body 禁止滚动
   document.body.style.overflow = "hidden";
 }
-// 持续动态校准 → 300ms 轮询（覆盖 iOS 底层渲染漂移）
+// 持续动态校准 → 300ms 轮询
 var fixTimer = setInterval(forceBottomFix, 300);
-// 多时机初始化
+// 多时机初始化（删除 orientationchange，仅竖屏减少抖动）
 window.addEventListener("DOMContentLoaded", forceBottomFix);
 window.addEventListener("load", forceBottomFix);
 setTimeout(forceBottomFix, 50);
@@ -1631,34 +1643,25 @@ setTimeout(forceBottomFix, 200);
 setTimeout(forceBottomFix, 800);
 setTimeout(forceBottomFix, 2000);
 window.addEventListener("resize", forceBottomFix);
-window.addEventListener("orientationchange", function(){ setTimeout(forceBottomFix, 200); setTimeout(forceBottomFix, 500); });
-// visualViewport 全程监听（iOS 键盘弹/收、工具栏伸缩都触发）
+// visualViewport 全程监听（iOS 键盘弹/收触发）
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", forceBottomFix);
   window.visualViewport.addEventListener("scroll", forceBottomFix);
 }
-// 输入框聚焦 → 键盘弹出 → scrollIntoView 兜底锚定底部模块
+// 输入框聚焦 → scrollIntoView 兜底
 document.addEventListener("focusin", function(e) {
+  if (!_shouldFix) return;
   if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") {
-    // 先修正高度
     forceBottomFix();
-    // scrollIntoView(false) 强制底部模块锚定可视区底部
-    // 抵消 iOS 自动上滚页面的原生行为
     var ba = document.getElementById("bottomArea");
     if (ba) { ba.scrollIntoView(false); }
-    // 键盘弹起有延迟，多轮次确保到位
-    setTimeout(function(){
-      forceBottomFix();
-      if (ba) ba.scrollIntoView(false);
-    }, 150);
-    setTimeout(function(){
-      forceBottomFix();
-      if (ba) ba.scrollIntoView(false);
-    }, 350);
+    setTimeout(function(){ forceBottomFix(); if (ba) ba.scrollIntoView(false); }, 150);
+    setTimeout(function(){ forceBottomFix(); if (ba) ba.scrollIntoView(false); }, 350);
     setTimeout(forceBottomFix, 600);
   }
 });
 document.addEventListener("focusout", function(e) {
+  if (!_shouldFix) return;
   if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") {
     setTimeout(forceBottomFix, 100);
     setTimeout(forceBottomFix, 300);

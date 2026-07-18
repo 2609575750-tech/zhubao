@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.1
+// 猪宝本地版 Service Worker v15.2
 // 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v15.1: 修复输入框双按钮同时显示(sendBtn默认display:none) + 消除TDZ错误(toastTimer/dot提前声明)
-const CACHE = "zhubao-local-v15.1";
+// v15.2: 本地模型默认空(设置面板不预选1.5B) + 走本地未选尺寸则拦截保存提示先选
+const CACHE = "zhubao-local-v15.2";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

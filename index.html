@@ -390,8 +390,9 @@
       <h3>本地模型设置</h3>
       <label>模型尺寸</label>
       <select id="modelSize">
+        <option value="" disabled selected hidden>请选择本地模型…</option>
         <option value="0.5B">0.5B（最快/最省电）</option>
-        <option value="1.5B" selected>1.5B（推荐·最强通用对话）</option>
+        <option value="1.5B">1.5B（推荐·最强通用对话）</option>
         <option value="3B代码">3B代码版（写代码专用）</option>
         <option value="custom">自定义模型ID</option>
       </select>
@@ -456,7 +457,7 @@ const MODEL_MAP = {
 };
 function defaultCfg() {
   return {
-    model: "1.5B", customModel: "", mirror: "https://hf-mirror.com",
+    model: "", customModel: "", mirror: "https://hf-mirror.com",
     device: /iPhone|iPad|iPod/i.test(navigator.userAgent) ? "wasm" : "webgpu",
     // 是否已手动选择模型：默认 false，发消息不触发任何模型；需手动打开设置选本地/云端并保存后才生效
     modelChosen: false,
@@ -1358,10 +1359,17 @@ $("#apiTestBtn").onclick = async () => {
   finally { btn.disabled = false; btn.textContent = "测试连接"; }
 };
 $("#saveSetup").onclick = () => {
-  cfg.model = $("#modelSize").value; cfg.customModel = $("#customModel").value.trim();
+  const apiEnabled = $("#apiEnabled").classList.contains("on");
+  const modelVal = $("#modelSize").value;
+  // 走本地模型但未选尺寸 → 提示先选，不保存不关闭
+  if (!apiEnabled && !modelVal) {
+    toast("请先在上方选择本地模型尺寸（0.5B / 1.5B / 3B代码）");
+    return;
+  }
+  cfg.model = modelVal; cfg.customModel = $("#customModel").value.trim();
   cfg.mirror = $("#mirror").value; cfg.device = $("#device").value;
   // 云端 API 字段
-  cfg.apiEnabled = $("#apiEnabled").classList.contains("on");
+  cfg.apiEnabled = apiEnabled;
   cfg.apiProvider = $("#apiProvider").value;
   cfg.apiModel = $("#apiModel").value.trim();
   cfg.apiUrl = $("#apiUrl").value.trim();

@@ -262,8 +262,8 @@
   .side-session:active { background: #e9ecef; }
   .side-session .ss-top { display: flex; align-items: center; justify-content: space-between; }
   .side-session .ss-title { font-size: 15px; font-weight: 600; color: var(--text-title); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .side-session .ss-del { flex-shrink: 0; width: 28px; height: 28px; border-radius: 6px; border: 1px solid #F53F3F; background: rgba(245,63,63,.08); color: #F53F3F; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
-  .side-session .ss-del:active { background: rgba(245,63,63,.18); }
+  .side-session .ss-del { flex-shrink: 0; width: 28px; height: 28px; border: none; border-radius: 50%; background: transparent; color: #86868B; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; opacity: 0.55; transition: background .2s, color .2s, transform .15s; }
+  .side-session .ss-del:active { background: rgba(255,59,48,.18); color: #FF3B30; transform: scale(.9); opacity: 1; }
   .side-session .ss-del svg { width: 16px; height: 16px; fill: none; }
   .side-session .ss-preview { font-size: 13px; color: var(--text-secondary); margin-top: 6px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .side-session .ss-time { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }

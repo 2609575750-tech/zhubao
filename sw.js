@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.3
+// 猪宝本地版 Service Worker v15.4
 // 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v15.3: DeepSeek 厂商默认模型归正为 deepseek-v4-flash(含旧deepseek-chat/reasoner停用名自动升级)
-const CACHE = "zhubao-local-v15.3";
+// v15.4: 历史会话删除按钮样式统一为聊天卡片删除按钮(灰底透明无红框+按下变红)
+const CACHE = "zhubao-local-v15.4";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

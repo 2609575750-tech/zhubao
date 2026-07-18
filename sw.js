@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.8
+// 猪宝本地版 Service Worker v15.9
 // 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v15.8: 语音聊天启动前预查麦克风权限(granted静默开/denied提示不弹窗)；UI状态变更移到start()确认后
-const CACHE = "zhubao-local-v15.8";
+// v15.9: 未选模型时不再触发loadLib()（修复首次打开显示"正在加载模型库…"的bug）
+const CACHE = "zhubao-local-v15.9";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

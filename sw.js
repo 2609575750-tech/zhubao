@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v15.13
+// 猪宝本地版 Service Worker v15.14
 // 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v15.13: 设置面板UI优化——删除多余代理地址栏；底部按钮改为横排三色（保存绿/测试蓝/清空红）
-const CACHE = "zhubao-local-v15.13";
+// v15.14: 底部Tab栏+输入栏整体包入 .bottom-area 贴底（不贴死，留12px间距）；修复iOS 100dvh不准导致悬空
+const CACHE = "zhubao-local-v15.14";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

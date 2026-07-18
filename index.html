@@ -367,7 +367,7 @@
       <button class="input-voice-btn" id="voiceCallBtn" title="语音聊天">
         <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" /></svg>
       </button>
-      <button class="input-send-btn" id="sendBtn" title="发送">
+      <button class="input-send-btn" id="sendBtn" title="发送" style="display:none">
         <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
       </button>
     </div>
@@ -851,6 +851,9 @@ async function runModel(messages, onToken) {
 /* ============ 渲染 ============ */
 const $ = s => document.querySelector(s);
 const chatEl = $("#chat");
+// Toast / Status（提前声明，避免 TDZ——promptChooseModel 等函数在模块执行早期就可能调用 toast()）
+let toastTimer;
+const dot = $("#connDot");
 // 消息内链接「复制按钮」事件委托
 chatEl.addEventListener("click", async (e) => {
   const btn = e.target.closest(".link-copy");
@@ -1423,9 +1426,7 @@ async function preloadModel() {
 }
 
 /* ============ Toast & Status ============ */
-let toastTimer;
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2200); }
-const dot = $("#connDot");
 function setStatus(text, state) { $("#statusText").textContent = text; dot.className = "dot" + (state ? " " + state : ""); dot.title = text; }
 
 /* ============ 初始化 ============ */

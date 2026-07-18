@@ -1,7 +1,7 @@
-// 猪宝本地版 Service Worker v14
+// 猪宝本地版 Service Worker v15
 // 策略：同源文件 cache-first / 跨域CDN network-first（只缓存成功响应）
-// v14: 厂商切换自动填最优模型+地址+展开该厂商全部模型(datalist)
-const CACHE = "zhubao-local-v14";
+// v15: 默认不选模型(手动选本地/云端保存后才生效) + 修复云端API历史消息 role 'ai'→'assistant'
+const CACHE = "zhubao-local-v15";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

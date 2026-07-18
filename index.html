@@ -458,6 +458,8 @@ function defaultCfg() {
   return {
     model: "1.5B", customModel: "", mirror: "https://hf-mirror.com",
     device: /iPhone|iPad|iPod/i.test(navigator.userAgent) ? "wasm" : "webgpu",
+    // 是否已手动选择模型：默认 false，发消息不触发任何模型；需手动打开设置选本地/云端并保存后才生效
+    modelChosen: false,
     // 云端 API 配置（免下载，直接调用厂商接口）
     apiEnabled: false,
     apiProvider: "deepseek",
@@ -618,7 +620,9 @@ function pushHistory(role, content) {
   }
   persistSessions();
 }
-function historyMessages() { return activeSession().messages.slice(0, -1).map(m => ({ role: m.role, content: m.content })); }
+// 把内部存储的 role 归一化为标准 role（'ai' → 'assistant'），云端 OpenAI 兼容接口只认 system/user/assistant
+function normRole(r) { return r === "ai" ? "assistant" : (r || "user"); }
+function historyMessages() { return activeSession().messages.slice(0, -1).map(m => ({ role: normRole(m.role), content: m.content })); }
 
 /* ============ 语音朗读（Web Speech API，对齐 vue-app） ============ */
 let speechEnabled = false;
@@ -930,9 +934,22 @@ function refreshInputBtns() {
   $("#voiceCallBtn").style.display = has ? "none" : "flex";
   $("#sendBtn").style.display = has ? "flex" : "none";
 }
+// 未选择模型时的友好提示：气泡引导 + 自动打开选择面板（不触发任何模型）
+let choosePrompted = false;
+function promptChooseModel() {
+  toast("请先选择模型（本地或云端 API）");
+  if (!choosePrompted) {
+    choosePrompted = true;
+    addMsg("ai", '<div class="bubble"><div class="bubble-content">👋 还没选择模型哦～<br>请点击顶部的<b>「选择模型」</b>，选一个<b>本地模型</b>（免费·需下载）或<b>云端 API</b>（免下载·填 Key），<b>保存后</b>就能开始对话啦。</div></div>');
+    scrollBottom();
+  }
+  openSetup();
+}
 async function send() {
   const ta = $("#input"), text = ta.value.trim();
   if (!text) return;
+  // 未手动选择模型 → 不触发任何模型，提示并打开选择面板
+  if (!cfg.modelChosen) { promptChooseModel(); return; }
   if (busy && !modelLoading) return; // 非下载中且正在回复 → 拦截
   // 如果本地模型还在下载，把消息排队，等下完自动发送（云端 API 不触发此逻辑）
   if (!cfg.apiEnabled && modelLoading && (!generator)) {
@@ -1092,6 +1109,8 @@ function initVoiceRecognition() {
 }
 
 function startVoiceChat() {
+  // 未手动选择模型 → 先选模型
+  if (!cfg.modelChosen) { promptChooseModel(); return; }
   if (!voiceRec && !initVoiceRecognition()) {
     toast("当前浏览器不支持语音识别，请使用 Chrome 或 Edge");
     return;
@@ -1345,16 +1364,22 @@ $("#saveSetup").onclick = () => {
   cfg.apiUrl = $("#apiUrl").value.trim();
   cfg.apiKey = $("#apiKey").value.trim();
   cfg.apiProxy = $("#apiProxy").value.trim();
+  cfg.modelChosen = true; // 手动保存即视为已选择模型，之后发消息才生效
+  choosePrompted = false;
   saveCfg(); generator = null;
   $("#setup").classList.remove("open");
-  toast(cfg.apiEnabled ? "已保存，已启用云端 API" : "已保存，下次发消息用新模型");
+  toast(cfg.apiEnabled ? "已保存，已启用云端 API" : "已保存，本地模型已选好，发消息即可使用");
   updateModelPickText();
-  setStatus(cfg.apiEnabled ? ("云端 API · " + (API_PRESETS[cfg.apiProvider]?.label || cfg.apiProvider)) : "模型已切换，将重新加载", cfg.apiEnabled ? "ok" : "loading");
+  setStatus(cfg.apiEnabled ? ("云端 API · " + (API_PRESETS[cfg.apiProvider]?.label || cfg.apiProvider)) : "本地模型已选择 · 发消息自动加载", cfg.apiEnabled ? "ok" : "loading");
 };
 $("#clearChatBtn").onclick = () => { if (!confirm("确定清空对话？")) return; clearChat(); $("#setup").classList.remove("open"); };
 
 // 模型选择器文字
 function updateModelPickText() {
+  if (!cfg.modelChosen) {
+    $("#modelLabel").textContent = "请选择模型 >";
+    return;
+  }
   if (cfg.apiEnabled) {
     $("#modelLabel").textContent = "云端·" + (cfg.apiModel || API_PRESETS[cfg.apiProvider]?.label || cfg.apiProvider) + " >";
     setStatus("云端 API · " + (API_PRESETS[cfg.apiProvider]?.label || cfg.apiProvider), "ok");
@@ -1412,7 +1437,8 @@ async function init() {
   refreshInputBtns();
   let gpu = false;
   try { gpu = !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch {}
-  if (cfg.apiEnabled) { setStatus("云端 API · " + (API_PRESETS[cfg.apiProvider]?.label || cfg.apiProvider), "ok"); }
+  if (!cfg.modelChosen) { setStatus("未选择模型 · 点顶部「请选择模型」", "loading"); }
+  else if (cfg.apiEnabled) { setStatus("云端 API · " + (API_PRESETS[cfg.apiProvider]?.label || cfg.apiProvider), "ok"); }
   else if (!gpu && cfg.device === "webgpu") { setStatus("本机不支持 WebGPU，建议设置里切 WASM", "bad"); }
   else { setStatus("未加载模型 · 发消息自动加载", "loading"); }
 

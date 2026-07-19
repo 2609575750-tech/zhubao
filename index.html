@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v15.29";
+window.APP_VERSION = "v16.0";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -241,6 +241,27 @@ window.APP_VERSION = "v15.29";
     animation: voicePulse 1.4s ease-out infinite;
     pointer-events: none;
   }
+  /* 语音不支持时禁用态 */
+  .input-voice-btn.disabled { opacity: 0.35; cursor: not-allowed; }
+  .input-voice-btn.disabled:active { transform: none; background: transparent; }
+  /* 正在听——绿色呼吸动画（区别于红脉冲通话中） */
+  .input-voice-btn.listening { background: rgba(52,199,89,.12); }
+  .input-voice-btn.listening svg { stroke: #34C759; }
+  .input-voice-btn.listening::after {
+    content: ""; position: absolute; inset: -4px; border-radius: 50%;
+    border: 2px solid rgba(52,199,89,.4);
+    animation: voicePulse 1.4s ease-out infinite;
+    pointer-events: none;
+  }
+  /* 麦克风波纹动画 */
+  .mic-wave { display: flex; align-items: center; gap: 2px; position: absolute; right: -28px; top: 8px; }
+  .mic-wave span { width: 3px; background: #34C759; border-radius: 2px; animation: wave 0.8s ease-in-out infinite; }
+  .mic-wave span:nth-child(1) { height: 8px; animation-delay: 0s; }
+  .mic-wave span:nth-child(2) { height: 14px; animation-delay: 0.15s; }
+  .mic-wave span:nth-child(3) { height: 10px; animation-delay: 0.3s; }
+  .mic-wave span:nth-child(4) { height: 16px; animation-delay: 0.45s; }
+  .mic-wave span:nth-child(5) { height: 8px; animation-delay: 0.6s; }
+  @keyframes wave { 0%,100% { opacity: .3; transform: scaleY(.6); } 50% { opacity: 1; transform: scaleY(1); } }
   .input-send-btn {
     width: 36px; height: 36px; border-radius: 50%;
     background: var(--brand-green); border: none;
@@ -1047,8 +1068,10 @@ function buildSystem(kbItems) {
 let busy = false;
 function refreshInputBtns() {
   const has = $("#input").value.trim().length > 0;
-  $("#voiceCallBtn").style.display = has ? "none" : "flex";
+  const voiceDisabled = !voiceSupported;
+  $("#voiceCallBtn").style.display = (has || voiceDisabled) ? "none" : "flex";
   $("#sendBtn").style.display = has ? "flex" : "none";
+  if (voiceDisabled) $("#voiceCallBtn").style.display = "none"; // 不支持的浏览器彻底隐藏
 }
 // 未选择模型时的友好提示：气泡引导 + 自动打开选择面板（不触发任何模型）
 let choosePrompted = false;
@@ -1179,51 +1202,76 @@ $("#kbBack").onclick = () => switchTab(lastChatTab, false);
 /* ============ 事件绑定 ============ */
 $("#sendBtn").onclick = send;
 
-/* ============ 语音聊天（连续语音对话模式） ============ */
+/* ============ 语音对话（单次识别 + 自动连续） ============ */
 let voiceRec = null;
 let voiceChatActive = false;     // 语音聊天是否开启
 let voiceChatProcessing = false; // AI正在回复/朗读中（暂停拾音）
+let voiceSupported = null;       // null=未检测, true=支持, false=不支持
+let voiceRestartTimer = null;    // 重启延迟，避免快速触发
 
 const PHONE_ICON_SVG = '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" /></svg>';
 const HANGUP_ICON_SVG = '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" transform="rotate(135 12 12)" /></svg>';
+
+// 页面加载时检测语音支持
+(function detectVoiceSupport() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  voiceSupported = !!SR;
+  if (!voiceSupported) {
+    const btn = document.getElementById("voiceCallBtn");
+    if (btn) { btn.classList.add("disabled"); btn.title = "当前浏览器不支持语音识别"; }
+  }
+})();
 
 function initVoiceRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return false;
   voiceRec = new SR();
   voiceRec.lang = "zh-CN";
-  voiceRec.continuous = true;      // 连续模式：持续拾音
-  voiceRec.interimResults = true;  // 实时显示中间结果
+  // 改用 continuous:false，每次识别完自动重启——兼容性远好于连续模式（移动端Chrome/Safari都稳）
+  voiceRec.continuous = false;
+  voiceRec.interimResults = true;
 
   voiceRec.onresult = (e) => {
-    let interim = "", final = "";
+    let final = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      e.results[i].isFinal ? (final += t) : (interim += t);
+      if (e.results[i].isFinal) final += e.results[i][0].transcript;
     }
-    // 中间结果实时显示在输入框（仅展示用）
-    if (interim && !voiceChatProcessing) {
-      $("#input").value = interim;
-      $("#input").style.height = "auto";
-      $("#input").style.height = Math.min($("#input").scrollHeight, 88) + "px";
-    }
-    // 有最终结果 → 发送给AI
     if (final.trim() && !voiceChatProcessing) {
       voiceChatSend(final.trim());
     }
   };
 
   voiceRec.onerror = (e) => {
-    if (e.error === "aborted" || e.error === "no-speech") return; // 静默处理
-    if (e.error === "not-allowed") toast("未获得麦克风权限，请在浏览器设置中允许");
-    else if (e.error === "network") toast("网络异常，语音识别不可用");
-    else toast("语音识别出错：" + (e.error || "未知"));
+    if (e.error === "aborted" || e.error === "no-speech") return;
+    if (e.error === "not-allowed") {
+      toast("未获得麦克风权限，请在浏览器设置中允许");
+      // 权限被拒 → 自动退出语音模式
+      if (voiceChatActive) stopVoiceChat();
+    } else if (e.error === "network") {
+      toast("网络异常，语音识别不可用");
+    } else if (e.error === "audio-capture") {
+      toast("找不到麦克风设备，请检查连接");
+    } else if (e.error === "language-not-supported") {
+      toast("当前语言不受语音识别支持（zh-CN）");
+    } else {
+      // 其他错误静默处理，自动重试
+      console.warn("[猪宝语音] 识别错误:", e.error);
+    }
   };
 
   voiceRec.onend = () => {
-    // 连续模式：语音聊天中还且AI没在回复 → 自动重启识别（实现持续拾音）
+    // 清除重启定时器
+    if (voiceRestartTimer) { clearTimeout(voiceRestartTimer); voiceRestartTimer = null; }
+    // 语音聊天激活中且AI没在回复 → 自动重启（延迟300ms防抖）
     if (voiceChatActive && !voiceChatProcessing) {
-      try { voiceRec.start(); } catch (_) {}
+      voiceRestartTimer = setTimeout(() => {
+        if (voiceChatActive && !voiceChatProcessing) {
+          try {
+            voiceRec.start();
+            $("#voiceCallBtn").classList.add("listening");
+          } catch (_) { voiceChatActive = false; stopVoiceChat(); }
+        }
+      }, 300);
     }
   };
   return true;
@@ -1233,46 +1281,79 @@ async function startVoiceChat() {
   // 未手动选择模型 → 先选模型
   if (!cfg.modelChosen) { promptChooseModel(); return; }
   if (!voiceRec && !initVoiceRecognition()) {
-    toast("当前浏览器不支持语音识别，请使用 Chrome 或 Edge");
+    toast("当前浏览器不支持语音识别，请使用桌面端 Chrome 或 Edge");
     return;
   }
 
-  // 预检查麦克风权限：已授权→静默启动；已拒绝→提示不浪费操作
+  // 如果已被拒绝过权限，先尝试通过 getUserMedia 触发权限请求（iOS友好）
   try {
-    const status = await navigator.permissions.query({ name: 'microphone' });
-    if (status.state === 'denied') {
-      toast('麦克风权限已被拒绝，请在浏览器地址栏左侧🔒图标中开启');
+    // 短时无感检测：如果没权限会弹系统授权框
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+    if (!stream) {
+      toast("需要麦克风权限才能使用语音功能");
       return;
     }
-    // granted / prompt → 继续启动
+    // 拿到的流不需要保留，语音识别自己会开，放掉
+    stream.getTracks().forEach(t => t.stop());
   } catch (_) {
-    // Safari/iOS 不支持 permissions.query → 走原有流程（首次会弹系统授权窗）
+    toast("麦克风访问被拒绝，请在系统设置中允许");
+    return;
   }
 
   voiceChatActive = true;
   voiceChatProcessing = false;
   try {
     voiceRec.start();
-    // 确认 start() 成功后再更新 UI（避免"已开启"toast 和权限弹窗同时出现）
-    $("#voiceCallBtn").classList.add("voice-chat-active");
+    $("#voiceCallBtn").classList.add("listening");
+    $("#voiceCallBtn").classList.remove("voice-chat-active");
     $("#voiceCallBtn").innerHTML = HANGUP_ICON_SVG;
-    toast("语音聊天已开启，直接说话即可");
+    toast("🎤 正在听，请说话...");
   } catch (e) {
     voiceChatActive = false;
-    toast("启动语音失败，请重试");
+    toast("启动语音失败，请刷新页面重试");
   }
 }
 
 function stopVoiceChat() {
   voiceChatActive = false;
   voiceChatProcessing = false;
-  cancelSpeech(); // 停止AI语音播报
-  try { voiceRec.stop(); } catch (_) {}
-  $("#voiceCallBtn").classList.remove("voice-chat-active");
+  cancelSpeech();
+  if (voiceRestartTimer) { clearTimeout(voiceRestartTimer); voiceRestartTimer = null; }
+  try { voiceRec && voiceRec.stop(); } catch (_) {}
+  $("#voiceCallBtn").classList.remove("voice-chat-active", "listening");
   $("#voiceCallBtn").innerHTML = PHONE_ICON_SVG;
-  $("#input").value = ""; // 清空临时展示
+  $("#input").value = "";
   $("#input").style.height = "auto";
-  toast("语音聊天已结束");
+  toast("语音已结束");
+}
+
+/* 快速语音输入——说一句话就识别，不进入连续对话（后续可加） */
+async function oneShotVoiceInput() {
+  if (voiceChatActive) { stopVoiceChat(); return; }
+  if (!voiceRec && !initVoiceRecognition()) {
+    toast("当前浏览器不支持语音识别");
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+    if (!stream) { toast("需要麦克风权限"); return; }
+    stream.getTracks().forEach(t => t.stop());
+  } catch (_) { toast("麦克风访问被拒绝"); return; }
+
+  voiceRec.continuous = false;
+  voiceRec.interimResults = false;
+  try {
+    voiceRec.start();
+    $("#voiceCallBtn").classList.add("listening");
+    toast("🎤 请说一句话...");
+  } catch (e) { toast("启动失败"); }
+  // 超时自动关闭
+  setTimeout(() => {
+    if ($("#voiceCallBtn").classList.contains("listening") && !voiceChatActive) {
+      try { voiceRec.stop(); } catch (_) {}
+      $("#voiceCallBtn").classList.remove("listening");
+    }
+  }, 8000);
 }
 
 /* 语音聊天专用发送：识别到完整语句 → 发AI → 语音朗读回复 → 恢复拾音 */
@@ -1315,7 +1396,19 @@ async function voiceChatSend(text) {
       '<br><span style="color:#86868B;font-size:13px">💡 提示：首次使用需联网下载模型（约200MB），请确保网络畅通。</span>';
     voiceChatProcessing = false;
     // 出错也要恢复拾音
-    if (voiceChatActive) { try { voiceRec.start(); } catch (_) {} }
+    if (voiceChatActive) { resumeVoiceRec(); }
+  }
+}
+
+/* 恢复语音拾音（自动处理按钮状态） */
+function resumeVoiceRec() {
+  if (!voiceChatActive || voiceChatProcessing) return;
+  try {
+    voiceRec.start();
+    $("#voiceCallBtn").classList.add("listening");
+    $("#voiceCallBtn").classList.remove("voice-chat-active");
+  } catch (_) {
+    // 启动失败可能因为浏览器限制，静默处理
   }
 }
 
@@ -1323,7 +1416,7 @@ async function voiceChatSend(text) {
 function speakTextForVoiceChat(text) {
   if (!("speechSynthesis" in window) || !text) {
     voiceChatProcessing = false;
-    if (voiceChatActive) { try { voiceRec.start(); } catch (_) {} }
+    if (voiceChatActive) { resumeVoiceRec(); }
     return;
   }
   window.speechSynthesis.cancel();
@@ -1332,11 +1425,11 @@ function speakTextForVoiceChat(text) {
   const v = selectBestVoice(); if (v) u.voice = v;
   u.onend = () => {
     voiceChatProcessing = false;
-    if (voiceChatActive) { try { voiceRec.start(); } catch (_) {} }
+    if (voiceChatActive) { resumeVoiceRec(); }
   };
   u.onerror = () => {
     voiceChatProcessing = false;
-    if (voiceChatActive) { try { voiceRec.start(); } catch (_) {} }
+    if (voiceChatActive) { resumeVoiceRec(); }
   };
   window.speechSynthesis.speak(u);
 }

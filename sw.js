@@ -1,7 +1,6 @@
-// 猪宝本地版 Service Worker v15.29
-// 策略：导航请求 network-first / 同源资源 cache-first / 跨域CDN network-first
-// v15.29: focus不抢iOS动画，400ms后统一校正，消除跳动
-const CACHE = "zhubao-local-v15.29";
+// 猪宝本地版 Service Worker v16.0
+// v16.0: 修复语音识别——改用 continuous:false 提升移动端兼容性 + getUserMedia 权限前置 + 微波动画反馈
+const CACHE = "zhubao-local-v16.0";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

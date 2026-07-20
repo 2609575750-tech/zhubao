@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v16.2";
+window.APP_VERSION = "v16.3";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -244,6 +244,9 @@ window.APP_VERSION = "v16.2";
   /* 语音不支持时禁用态 */
   .input-voice-btn.disabled { opacity: 0.35; cursor: not-allowed; }
   .input-voice-btn.disabled:active { transform: none; background: transparent; }
+  /* iOS 兜底方案：纯麦克风图标 */
+  .input-voice-btn.ios-fallback { }
+  .input-voice-btn.ios-fallback svg { stroke: #007AFF; }
   /* 正在听——绿色呼吸动画 */
   .input-voice-btn.listening { background: rgba(52,199,89,.15); }
   .input-voice-btn.listening svg { stroke: #34C759; }
@@ -1191,7 +1194,7 @@ $("#kbBack").onclick = () => switchTab(lastChatTab, false);
 /* ============ 事件绑定 ============ */
 $("#sendBtn").onclick = send;
 
-/* ============ 语音对话 ============ */
+/* ============ 语音输入 ============ */
 let voiceRec = null;
 let voiceChatActive = false;
 let voiceChatProcessing = false;
@@ -1200,34 +1203,33 @@ let voiceNoResultTimer = null;
 
 const PHONE_ICON_SVG = '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" /></svg>';
 const HANGUP_ICON_SVG = '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" transform="rotate(135 12 12)" /></svg>';
+const MIC_SVG = '<svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 00-3 3v6a3 3 0 006 0V5a3 3 0 00-3-3z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 10v1a7 7 0 01-14 0v-1" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 19v3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-// 页面加载时检测语音支持
+// 页面加载时检测是否支持浏览器原生语音识别
+const SUPPORTS_SR = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 (function detectVoice() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const btn = document.getElementById("voiceCallBtn");
-  const ok = !!SR;
-  if (!ok && btn) { btn.classList.add("disabled"); btn.title = "不支持语音识别"; }
-  // 把检测结果记到全局，后面显示到状态栏
-  window._voiceSupported = ok;
-  window._voiceAPIName = SR ? (window.SpeechRecognition ? "SpeechRecognition" : "webkitSpeechRecognition") : "无";
+  if (!btn) return;
+  if (!SUPPORTS_SR) {
+    // iOS Safari / 不支持的浏览器 → 改用"弹出键盘语音"模式
+    btn.classList.add("ios-fallback");
+    btn.title = "使用系统键盘语音输入";
+    btn.innerHTML = MIC_SVG;
+  }
 })();
 
 function initVoiceRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return false;
   voiceRec = new SR();
-  // 关键：不设 continuous，让每次识别完后 end 事件重新 start（兼容性最好）
   voiceRec.continuous = false;
-  voiceRec.interimResults = false; // 只拿最终结果，减少兼容性问题
+  voiceRec.interimResults = false;
   voiceRec.lang = "zh-CN";
 
   voiceRec.onstart = () => {
-    // 识别已启动，设一个超时：如果5秒没结果就提示用户
     if (voiceNoResultTimer) clearTimeout(voiceNoResultTimer);
     voiceNoResultTimer = setTimeout(() => {
-      if (voiceChatActive && !voiceChatProcessing) {
-        toast("没听到声音，请靠近麦克风试试~");
-      }
+      if (voiceChatActive && !voiceChatProcessing) toast("没听到声音，靠近麦克风试试~");
     }, 5000);
   };
 
@@ -1237,36 +1239,24 @@ function initVoiceRecognition() {
     for (let i = e.resultIndex; i < e.results.length; i++) {
       if (e.results[i].isFinal) final += e.results[i][0].transcript;
     }
-    if (final.trim() && !voiceChatProcessing) {
-      voiceChatSend(final.trim());
-    }
+    if (final.trim() && !voiceChatProcessing) voiceChatSend(final.trim());
   };
 
   voiceRec.onerror = (e) => {
     if (e.error === "no-speech" || e.error === "aborted") return;
-    if (e.error === "not-allowed") {
-      toast("请在浏览器设置中允许麦克风权限");
-      if (voiceChatActive) stopVoiceChat();
-    } else if (e.error === "network") {
-      toast("网络异常，语音识别不可用");
-    } else if (e.error === "audio-capture") {
-      toast("找不到麦克风，请检查设备");
-    } else {
-      console.warn("[语音]", e.error);
-    }
+    if (e.error === "not-allowed") { toast("请在浏览器设置中允许麦克风权限"); if (voiceChatActive) stopVoiceChat(); }
+    else if (e.error === "network") toast("网络异常，语音识别不可用");
+    else if (e.error === "audio-capture") toast("找不到麦克风");
+    else console.warn("[语音]", e.error);
   };
 
   voiceRec.onend = () => {
     if (voiceNoResultTimer) { clearTimeout(voiceNoResultTimer); voiceNoResultTimer = null; }
     if (voiceRestartTimer) { clearTimeout(voiceRestartTimer); voiceRestartTimer = null; }
-    // 语音模式中且AI没在回复 → 自动重启拾音
     if (voiceChatActive && !voiceChatProcessing) {
       voiceRestartTimer = setTimeout(() => {
         if (voiceChatActive && !voiceChatProcessing) {
-          try {
-            voiceRec.start();
-            $("#voiceCallBtn").classList.add("listening");
-          } catch (_) {}
+          try { voiceRec.start(); $("#voiceCallBtn").classList.add("listening"); } catch (_) {}
         }
       }, 400);
     }
@@ -1274,22 +1264,22 @@ function initVoiceRecognition() {
   return true;
 }
 
+// iOS 键盘语音输入（兜底方案）：聚焦输入框唤起系统键盘
+function iosKeyboardVoice() {
+  toast("🎤 点击键盘上的麦克风图标说话");
+  $("#input").focus();
+}
+
 async function startVoiceChat() {
   if (!cfg.modelChosen) { promptChooseModel(); return; }
   if (!voiceRec && !initVoiceRecognition()) {
-    // 给出具体浏览器提示
-    const isiOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-    const isWechat = /MicroMessenger/.test(navigator.userAgent);
-    if (isiOS && isWechat) toast("微信内不支持语音，请用 Safari 浏览器打开");
-    else if (isiOS) toast("iOS Safari 需 iOS 16.4+，设置→Safari→开启「语音识别」");
-    else toast("当前浏览器不支持语音识别，请用 Chrome");
+    iosKeyboardVoice();
     return;
   }
 
   voiceChatActive = true;
   voiceChatProcessing = false;
   try {
-    // 直接 start，SpeechRecognition 自己会触发麦克风权限请求
     voiceRec.start();
     $("#voiceCallBtn").classList.add("listening");
     $("#voiceCallBtn").classList.remove("voice-chat-active");
@@ -1297,7 +1287,8 @@ async function startVoiceChat() {
     toast("🎤 正在听，说吧~");
   } catch (e) {
     voiceChatActive = false;
-    toast("启动语音失败，刷新试试");
+    toast("启动失败，试试键盘麦克风吧");
+    iosKeyboardVoice();
   }
 }
 
@@ -1309,7 +1300,7 @@ function stopVoiceChat() {
   if (voiceNoResultTimer) { clearTimeout(voiceNoResultTimer); voiceNoResultTimer = null; }
   try { voiceRec && voiceRec.stop(); } catch (_) {}
   $("#voiceCallBtn").classList.remove("voice-chat-active", "listening");
-  $("#voiceCallBtn").innerHTML = PHONE_ICON_SVG;
+  $("#voiceCallBtn").innerHTML = SUPPORTS_SR ? PHONE_ICON_SVG : MIC_SVG;
   $("#input").value = "";
   $("#input").style.height = "auto";
   toast("语音已关闭");
@@ -1394,7 +1385,9 @@ function speakTextForVoiceChat(text) {
 }
 
 $("#voiceCallBtn").onclick = () => {
-  if (voiceChatActive) {
+  if (!SUPPORTS_SR) {
+    iosKeyboardVoice();
+  } else if (voiceChatActive) {
     stopVoiceChat();
   } else {
     startVoiceChat();

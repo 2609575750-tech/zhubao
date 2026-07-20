@@ -1,6 +1,6 @@
-// 猪宝本地版 Service Worker v16.0
-// v16.0: 修复语音识别——改用 continuous:false 提升移动端兼容性 + getUserMedia 权限前置 + 微波动画反馈
-const CACHE = "zhubao-local-v16.0";
+// 猪宝本地版 Service Worker v16.1
+// v16.1: 移除 getUserMedia 前置检查，SpeechRecognition 自管理麦克风权限，降低 iOS 兼容问题
+const CACHE = "zhubao-local-v16.1";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

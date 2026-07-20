@@ -1,6 +1,6 @@
-// 猪宝本地版 Service Worker v16.2
-// v16.2: 加语音诊断日志+浏览器识别提示
-const CACHE = "zhubao-local-v16.2";
+// 猪宝本地版 Service Worker v16.4
+// v16.4: iOS 键盘语音方案——聚焦输入框+自动检测听写内容自动发送
+const CACHE = "zhubao-local-v16.4";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

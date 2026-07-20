@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v16.3";
+window.APP_VERSION = "v16.4";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -244,9 +244,6 @@ window.APP_VERSION = "v16.3";
   /* 语音不支持时禁用态 */
   .input-voice-btn.disabled { opacity: 0.35; cursor: not-allowed; }
   .input-voice-btn.disabled:active { transform: none; background: transparent; }
-  /* iOS 兜底方案：纯麦克风图标 */
-  .input-voice-btn.ios-fallback { }
-  .input-voice-btn.ios-fallback svg { stroke: #007AFF; }
   /* 正在听——绿色呼吸动画 */
   .input-voice-btn.listening { background: rgba(52,199,89,.15); }
   .input-voice-btn.listening svg { stroke: #34C759; }
@@ -1200,24 +1197,55 @@ let voiceChatActive = false;
 let voiceChatProcessing = false;
 let voiceRestartTimer = null;
 let voiceNoResultTimer = null;
+let _iosVoiceTimer = null;      // iOS 键盘语音自动发送定时器
 
 const PHONE_ICON_SVG = '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" /></svg>';
 const HANGUP_ICON_SVG = '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" transform="rotate(135 12 12)" /></svg>';
-const MIC_SVG = '<svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 00-3 3v6a3 3 0 006 0V5a3 3 0 00-3-3z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 10v1a7 7 0 01-14 0v-1" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 19v3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-// 页面加载时检测是否支持浏览器原生语音识别
+// 页面加载时检测语音 API 支持
 const SUPPORTS_SR = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 (function detectVoice() {
   const btn = document.getElementById("voiceCallBtn");
   if (!btn) return;
-  if (!SUPPORTS_SR) {
-    // iOS Safari / 不支持的浏览器 → 改用"弹出键盘语音"模式
-    btn.classList.add("ios-fallback");
-    btn.title = "使用系统键盘语音输入";
-    btn.innerHTML = MIC_SVG;
-  }
+  if (SUPPORTS_SR) return; // 桌面/Android Chrome 保持原样
+  // iOS → 按钮显示纯麦克风图标，绑定键盘语音方案
+  btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 00-3 3v6a3 3 0 006 0V5a3 3 0 00-3-3z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 10v1a7 7 0 01-14 0v-1" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 19v3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  btn.title = "语音输入（系统键盘）";
 })();
 
+// ===== iOS 键盘语音方案 =====
+// 原理：聚焦 textarea → iOS 键盘弹出 → 用户按键盘🎤说话
+// → 系统自动填入文字 → 检测到输入变化 → 自动发送
+function iosVoiceInput() {
+  const input = $("#input");
+  toast("🔴 长按键盘🎤说话，说完自动发送");
+  input.focus();
+  // 键盘弹出后监听输入变化，iOS 听写填入后自动发
+  if (_iosVoiceTimer) clearInterval(_iosVoiceTimer);
+  let lastVal = input.value;
+  _iosVoiceTimer = setInterval(() => {
+    const v = input.value;
+    if (v !== lastVal && v.trim()) {
+      // 用户通过键盘麦克风输入了文字 → 检测停顿后自动发
+      if (_iosVoiceTimer) clearInterval(_iosVoiceTimer);
+      _iosVoiceTimer = null;
+      // 给系统一点时间完成听写
+      setTimeout(() => {
+        if (input.value.trim()) {
+          send();
+          toast("✅ 已发送");
+        }
+      }, 600);
+    }
+    lastVal = v;
+  }, 300);
+  // 10秒后自动停止监听
+  setTimeout(() => {
+    if (_iosVoiceTimer) { clearInterval(_iosVoiceTimer); _iosVoiceTimer = null; }
+  }, 15000);
+}
+
+// ===== 桌面/Android 版 Web Speech API 语音识别 =====
 function initVoiceRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return false;
@@ -1244,7 +1272,7 @@ function initVoiceRecognition() {
 
   voiceRec.onerror = (e) => {
     if (e.error === "no-speech" || e.error === "aborted") return;
-    if (e.error === "not-allowed") { toast("请在浏览器设置中允许麦克风权限"); if (voiceChatActive) stopVoiceChat(); }
+    if (e.error === "not-allowed") { toast("未获得麦克风权限"); if (voiceChatActive) stopVoiceChat(); }
     else if (e.error === "network") toast("网络异常，语音识别不可用");
     else if (e.error === "audio-capture") toast("找不到麦克风");
     else console.warn("[语音]", e.error);
@@ -1264,16 +1292,10 @@ function initVoiceRecognition() {
   return true;
 }
 
-// iOS 键盘语音输入（兜底方案）：聚焦输入框唤起系统键盘
-function iosKeyboardVoice() {
-  toast("🎤 点击键盘上的麦克风图标说话");
-  $("#input").focus();
-}
-
 async function startVoiceChat() {
   if (!cfg.modelChosen) { promptChooseModel(); return; }
   if (!voiceRec && !initVoiceRecognition()) {
-    iosKeyboardVoice();
+    iosVoiceInput();
     return;
   }
 
@@ -1287,8 +1309,7 @@ async function startVoiceChat() {
     toast("🎤 正在听，说吧~");
   } catch (e) {
     voiceChatActive = false;
-    toast("启动失败，试试键盘麦克风吧");
-    iosKeyboardVoice();
+    iosVoiceInput();
   }
 }
 
@@ -1300,7 +1321,7 @@ function stopVoiceChat() {
   if (voiceNoResultTimer) { clearTimeout(voiceNoResultTimer); voiceNoResultTimer = null; }
   try { voiceRec && voiceRec.stop(); } catch (_) {}
   $("#voiceCallBtn").classList.remove("voice-chat-active", "listening");
-  $("#voiceCallBtn").innerHTML = SUPPORTS_SR ? PHONE_ICON_SVG : MIC_SVG;
+  $("#voiceCallBtn").innerHTML = PHONE_ICON_SVG;
   $("#input").value = "";
   $("#input").style.height = "auto";
   toast("语音已关闭");
@@ -1385,12 +1406,12 @@ function speakTextForVoiceChat(text) {
 }
 
 $("#voiceCallBtn").onclick = () => {
-  if (!SUPPORTS_SR) {
-    iosKeyboardVoice();
-  } else if (voiceChatActive) {
-    stopVoiceChat();
+  if (SUPPORTS_SR) {
+    // 桌面/Android：Web Speech API
+    if (voiceChatActive) stopVoiceChat(); else startVoiceChat();
   } else {
-    startVoiceChat();
+    // iOS：键盘语音方案
+    iosVoiceInput();
   }
 };
 $("#input").addEventListener("input", e => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 88) + "px"; refreshInputBtns(); });
@@ -1643,11 +1664,6 @@ async function init() {
   else if (cfg.apiEnabled) { setStatus("云端 API · " + (API_PRESETS[cfg.apiProvider]?.label || cfg.apiProvider), "ok"); }
   else if (!gpu && cfg.device === "webgpu") { setStatus("本机不支持 WebGPU，建议设置里切 WASM", "bad"); }
   else { setStatus("未加载模型 · 发消息自动加载", "loading"); }
-
-  // 语音状态诊断（写在状态栏旁边的dot上，hover可看）
-  const voiceAPI = window._voiceAPIName || "无";
-  const ua = navigator.userAgent;
-  console.log("[猪宝诊断] 语音API:", voiceAPI, "| 浏览器:", ua.slice(0,80));
 
   const msgs = activeSession().messages;
   if (msgs.length) { for (const m of msgs) addMsg(m.role, renderMsg(m.content)); scrollBottom(); }

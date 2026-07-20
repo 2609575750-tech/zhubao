@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v16.1";
+window.APP_VERSION = "v16.2";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -1203,9 +1203,13 @@ const HANGUP_ICON_SVG = '<svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-
 
 // 页面加载时检测语音支持
 (function detectVoice() {
-  const ok = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const btn = document.getElementById("voiceCallBtn");
+  const ok = !!SR;
   if (!ok && btn) { btn.classList.add("disabled"); btn.title = "不支持语音识别"; }
+  // 把检测结果记到全局，后面显示到状态栏
+  window._voiceSupported = ok;
+  window._voiceAPIName = SR ? (window.SpeechRecognition ? "SpeechRecognition" : "webkitSpeechRecognition") : "无";
 })();
 
 function initVoiceRecognition() {
@@ -1273,7 +1277,12 @@ function initVoiceRecognition() {
 async function startVoiceChat() {
   if (!cfg.modelChosen) { promptChooseModel(); return; }
   if (!voiceRec && !initVoiceRecognition()) {
-    toast("浏览器不支持语音识别，请用 Chrome");
+    // 给出具体浏览器提示
+    const isiOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    const isWechat = /MicroMessenger/.test(navigator.userAgent);
+    if (isiOS && isWechat) toast("微信内不支持语音，请用 Safari 浏览器打开");
+    else if (isiOS) toast("iOS Safari 需 iOS 16.4+，设置→Safari→开启「语音识别」");
+    else toast("当前浏览器不支持语音识别，请用 Chrome");
     return;
   }
 
@@ -1641,6 +1650,11 @@ async function init() {
   else if (cfg.apiEnabled) { setStatus("云端 API · " + (API_PRESETS[cfg.apiProvider]?.label || cfg.apiProvider), "ok"); }
   else if (!gpu && cfg.device === "webgpu") { setStatus("本机不支持 WebGPU，建议设置里切 WASM", "bad"); }
   else { setStatus("未加载模型 · 发消息自动加载", "loading"); }
+
+  // 语音状态诊断（写在状态栏旁边的dot上，hover可看）
+  const voiceAPI = window._voiceAPIName || "无";
+  const ua = navigator.userAgent;
+  console.log("[猪宝诊断] 语音API:", voiceAPI, "| 浏览器:", ua.slice(0,80));
 
   const msgs = activeSession().messages;
   if (msgs.length) { for (const m of msgs) addMsg(m.role, renderMsg(m.content)); scrollBottom(); }

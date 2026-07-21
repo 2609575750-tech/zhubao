@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v17.1";
+window.APP_VERSION = "v17.2";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -513,8 +513,8 @@ window.APP_VERSION = "v17.1";
         <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" />
       </div>
 
-      <div class="setup-divider" style="margin-top:10px"><span>🎤 iOS 语音识别（录音转文字）</span></div>
-      <div style="font-size:11px;color:#86868B;margin-bottom:6px;line-height:1.4">开启后 iOS 上点语音按钮直接录音说话，通过 Whisper 接口转文字。留空则使用键盘语音。</div>
+      <div class="setup-divider" style="margin-top:10px"><span>🎤 iOS 录音语音识别</span></div>
+      <div style="font-size:11px;color:#86868B;margin-bottom:6px;line-height:1.4">开启后点语音按钮直接录音→Whisper转文字。需填写兼容 OpenAI Whisper 的 API 地址和 Key，留空则使用键盘语音。</div>
       <label>Whisper API 地址</label>
       <input id="asrUrl" placeholder="https://api.openai.com/v1/audio/transcriptions" autocomplete="off" />
       <label>API Key（留空复用聊天 Key）</label>
@@ -1227,7 +1227,7 @@ let isRecording = false;
 
 function iosVoiceInput() {
   // 检查是否配置了 ASR（语音识别 API）
-  const hasASR = !!(cfg.asrUrl || (cfg.apiEnabled && cfg.apiUrl));
+  const hasASR = !!(cfg.asrUrl && cfg.asrUrl.trim());
   if (!hasASR) {
     // 没配 ASR → 回退到键盘语音
     const input = $("#input");
@@ -1289,7 +1289,7 @@ function stopRecording() {
 }
 
 async function transcribeAudio(blob) {
-  const asrUrl = cfg.asrUrl || (cfg.apiEnabled ? cfg.apiUrl.replace("/chat/completions", "/audio/transcriptions") : "");
+  const asrUrl = cfg.asrUrl.trim();
   const asrKey = cfg.asrKey || cfg.apiKey;
   if (!asrUrl || !asrKey) { toast("请先在设置中配置语音识别 API"); return; }
   try {

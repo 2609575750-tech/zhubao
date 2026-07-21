@@ -1,6 +1,6 @@
-// 猪宝本地版 Service Worker v17.1
-// v17.1: iOS按钮图标统一用电话样式
-const CACHE = "zhubao-local-v17.1";
+// 猪宝本地版 Service Worker v17.2
+// v17.2: 修复Whisper 404——没配ASR不走自动推导地址
+const CACHE = "zhubao-local-v17.2";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

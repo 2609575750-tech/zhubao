@@ -1,6 +1,6 @@
-// 猪宝本地版 Service Worker v16.4
-// v16.4: iOS 键盘语音方案——聚焦输入框+自动检测听写内容自动发送
-const CACHE = "zhubao-local-v16.4";
+// 猪宝本地版 Service Worker v16.6
+// v16.6: iOS新版Safari强制走键盘语音（API存在但识别无效）
+const CACHE = "zhubao-local-v16.6";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

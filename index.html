@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v16.6";
+window.APP_VERSION = "v17.0";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -512,6 +512,13 @@ window.APP_VERSION = "v16.6";
         <label>API Key</label>
         <input id="apiKey" type="password" placeholder="sk-..." autocomplete="off" />
       </div>
+
+      <div class="setup-divider" style="margin-top:10px"><span>🎤 iOS 语音识别（录音转文字）</span></div>
+      <div style="font-size:11px;color:#86868B;margin-bottom:6px;line-height:1.4">开启后 iOS 上点语音按钮直接录音说话，通过 Whisper 接口转文字。留空则使用键盘语音。</div>
+      <label>Whisper API 地址</label>
+      <input id="asrUrl" placeholder="https://api.openai.com/v1/audio/transcriptions" autocomplete="off" />
+      <label>API Key（留空复用聊天 Key）</label>
+      <input id="asrKey" type="password" placeholder="sk-..." autocomplete="off" />
       </div>
 
       <div class="setup-actions">
@@ -538,16 +545,16 @@ function defaultCfg() {
   return {
     model: "", customModel: "", mirror: "https://hf-mirror.com",
     device: /iPhone|iPad|iPod/i.test(navigator.userAgent) ? "wasm" : "webgpu",
-    // 是否已手动选择模型：默认 false，发消息不触发任何模型；需手动打开设置选本地/云端并保存后才生效
     modelChosen: false,
-    // 云端 API 配置（免下载，直接调用厂商接口）
     apiEnabled: false,
     apiProvider: "deepseek",
     apiModel: "deepseek-v4-flash",
     apiUrl: "https://api.deepseek.com/chat/completions",
     apiKey: "",
     apiProxy: "",
-    // 朗读声音：空字符串=自动选最优中文音色；否则存所选 voice 的 voiceURI（跨版本稳定）
+    // 语音识别（Whisper 兼容 API，iOS 录音转文字用）
+    asrUrl: "",
+    asrKey: "",
     voiceURI: ""
   };
 }
@@ -1214,36 +1221,102 @@ const SUPPORTS_SR = !!(window.SpeechRecognition || window.webkitSpeechRecognitio
   btn.title = "语音输入（系统键盘）";
 })();
 
-// ===== iOS 键盘语音方案 =====
-// 原理：聚焦 textarea → iOS 键盘弹出 → 用户按键盘🎤说话
-// → 系统自动填入文字 → 检测到输入变化 → 自动发送
+// ===== iOS 录音 + Whisper API 语音识别（点一下直接说话） =====
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+
 function iosVoiceInput() {
-  const input = $("#input");
-  toast("🔴 长按键盘🎤说话，说完自动发送");
-  input.focus();
-  // 键盘弹出后监听输入变化，iOS 听写填入后自动发
-  if (_iosVoiceTimer) clearInterval(_iosVoiceTimer);
-  let lastVal = input.value;
-  _iosVoiceTimer = setInterval(() => {
-    const v = input.value;
-    if (v !== lastVal && v.trim()) {
-      // 用户通过键盘麦克风输入了文字 → 检测停顿后自动发
-      if (_iosVoiceTimer) clearInterval(_iosVoiceTimer);
-      _iosVoiceTimer = null;
-      // 给系统一点时间完成听写
-      setTimeout(() => {
-        if (input.value.trim()) {
-          send();
-          toast("✅ 已发送");
-        }
-      }, 600);
-    }
-    lastVal = v;
-  }, 300);
-  // 10秒后自动停止监听
-  setTimeout(() => {
-    if (_iosVoiceTimer) { clearInterval(_iosVoiceTimer); _iosVoiceTimer = null; }
-  }, 15000);
+  // 检查是否配置了 ASR（语音识别 API）
+  const hasASR = !!(cfg.asrUrl || (cfg.apiEnabled && cfg.apiUrl));
+  if (!hasASR) {
+    // 没配 ASR → 回退到键盘语音
+    const input = $("#input");
+    toast("🎤 按键盘右下角麦克风说话，说完自动发");
+    input.focus();
+    if (_iosVoiceTimer) clearInterval(_iosVoiceTimer);
+    let lastVal = input.value;
+    _iosVoiceTimer = setInterval(() => {
+      const v = input.value;
+      if (v !== lastVal && v.trim()) {
+        if (_iosVoiceTimer) clearInterval(_iosVoiceTimer);
+        _iosVoiceTimer = null;
+        setTimeout(() => { if (input.value.trim()) { send(); toast("✅ 已发送"); } }, 600);
+      }
+      lastVal = v;
+    }, 300);
+    setTimeout(() => { if (_iosVoiceTimer) { clearInterval(_iosVoiceTimer); _iosVoiceTimer = null; } }, 15000);
+    return;
+  }
+
+  // 已配 ASR → 开始录音
+  startRecording();
+}
+
+async function startRecording() {
+  if (isRecording) { stopRecording(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunks = [];
+    // 优先用 wav 编码（兼容性好），不行就默认
+    const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
+    mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      if (audioChunks.length === 0) { toast("未录到声音"); return; }
+      // 发送到 Whisper 识别
+      toast("🔄 识别中...");
+      const blob = new Blob(audioChunks, { type: mime });
+      await transcribeAudio(blob);
+    };
+    mediaRecorder.start();
+    isRecording = true;
+    $("#voiceCallBtn").classList.add("listening");
+    $("#voiceCallBtn").innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="#FF3B30"/></svg>';
+    toast("🔴 录音中，说完再点一次停止");
+  } catch (e) {
+    toast("需要麦克风权限才能录音");
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+  }
+  isRecording = false;
+  $("#voiceCallBtn").classList.remove("listening");
+  $("#voiceCallBtn").innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 00-3 3v6a3 3 0 006 0V5a3 3 0 00-3-3z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 10v1a7 7 0 01-14 0v-1" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 19v3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+
+async function transcribeAudio(blob) {
+  const asrUrl = cfg.asrUrl || (cfg.apiEnabled ? cfg.apiUrl.replace("/chat/completions", "/audio/transcriptions") : "");
+  const asrKey = cfg.asrKey || cfg.apiKey;
+  if (!asrUrl || !asrKey) { toast("请先在设置中配置语音识别 API"); return; }
+  try {
+    const form = new FormData();
+    form.append("file", blob, "recording." + (blob.type.includes("mp4") ? "m4a" : "webm"));
+    form.append("model", "whisper-1");
+    form.append("language", "zh");
+    const res = await fetch(asrUrl, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + asrKey },
+      body: form
+    });
+    if (!res.ok) { toast("语音识别失败：" + res.status); return; }
+    const data = await res.json();
+    const text = (data.text || "").trim();
+    if (!text) { toast("未识别到文字"); return; }
+    // 填入输入框并发送
+    $("#input").value = text;
+    $("#input").style.height = "auto";
+    $("#input").style.height = Math.min($("#input").scrollHeight, 88) + "px";
+    refreshInputBtns();
+    send();
+    toast("✅ 已识别");
+  } catch (e) {
+    toast("语音识别网络错误");
+  }
 }
 
 // ===== 桌面/Android 版 Web Speech API 语音识别 =====
@@ -1535,6 +1608,9 @@ function openSetup() {
   $("#apiModel").value = modelForShow;
   $("#apiUrl").value = cfg.apiUrl;
   $("#apiKey").value = cfg.apiKey;
+  // ASR 语音识别字段回填
+  $("#asrUrl").value = cfg.asrUrl || "";
+  $("#asrKey").value = cfg.asrKey || "";
   fillModelList(cfg.apiProvider);
   refreshApiUI();
   refreshVoiceOptions();
@@ -1589,21 +1665,22 @@ $("#apiTestBtn2").onclick = async () => {
 $("#saveSetup").onclick = () => {
   const apiEnabled = $("#apiEnabled").classList.contains("on");
   const modelVal = $("#modelSize").value;
-  // 走本地模型但未选尺寸 → 提示先选，不保存不关闭
   if (!apiEnabled && !modelVal) {
     toast("请先在上方选择本地模型尺寸（0.5B / 1.5B / 3B代码）");
     return;
   }
   cfg.model = modelVal; cfg.customModel = $("#customModel").value.trim();
   cfg.mirror = $("#mirror").value; cfg.device = $("#device").value;
-  // 云端 API 字段
   cfg.apiEnabled = apiEnabled;
   cfg.apiProvider = $("#apiProvider").value;
   cfg.apiModel = $("#apiModel").value.trim();
   cfg.apiUrl = $("#apiUrl").value.trim();
   cfg.apiKey = $("#apiKey").value.trim();
-  cfg.voiceURI = $("#voiceSel").value; // 朗读声音（空=自动）
-  cfg.modelChosen = true; // 手动保存即视为已选择模型，之后发消息才生效
+  // 语音识别 ASR
+  cfg.asrUrl = $("#asrUrl").value.trim();
+  cfg.asrKey = $("#asrKey").value.trim();
+  cfg.voiceURI = $("#voiceSel").value;
+  cfg.modelChosen = true;
   choosePrompted = false;
   saveCfg(); generator = null;
   $("#setup").classList.remove("open");

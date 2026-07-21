@@ -1,6 +1,6 @@
-// 猪宝本地版 Service Worker v16.6
-// v16.6: iOS新版Safari强制走键盘语音（API存在但识别无效）
-const CACHE = "zhubao-local-v16.6";
+// 猪宝本地版 Service Worker v17.0
+// v17.0: iOS录音+Whisper API语音识别——点一下直接说话转文字
+const CACHE = "zhubao-local-v17.0";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {

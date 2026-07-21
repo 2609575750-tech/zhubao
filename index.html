@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <script>
 // 强制版本检查：绕过旧SW缓存，检测到新版就清缓存+注销SW+刷新
-window.APP_VERSION = "v17.0";
+window.APP_VERSION = "v17.1";
 (async function() {
   try {
     // 加时间戳参数绕过SW的cache-first（缓存里没有带参数的URL，会走网络）
@@ -1216,9 +1216,8 @@ const SUPPORTS_SR = !!(window.SpeechRecognition || window.webkitSpeechRecognitio
   const btn = document.getElementById("voiceCallBtn");
   if (!btn) return;
   if (SUPPORTS_SR && !IS_IOS) return; // 桌面/Android Chrome 保持原样
-  // iOS（包括 iOS 新版 Safari 虽然有 API 但识别无效）→ 强制走键盘语音
-  btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 00-3 3v6a3 3 0 006 0V5a3 3 0 00-3-3z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 10v1a7 7 0 01-14 0v-1" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 19v3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  btn.title = "语音输入（系统键盘）";
+  // iOS → 用跟桌面一样图标，功能走录音/键盘语音
+  btn.title = "语音输入";
 })();
 
 // ===== iOS 录音 + Whisper API 语音识别（点一下直接说话） =====
@@ -1286,7 +1285,7 @@ function stopRecording() {
   }
   isRecording = false;
   $("#voiceCallBtn").classList.remove("listening");
-  $("#voiceCallBtn").innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 00-3 3v6a3 3 0 006 0V5a3 3 0 00-3-3z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 10v1a7 7 0 01-14 0v-1" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 19v3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  $("#voiceCallBtn").innerHTML = PHONE_ICON_SVG;
 }
 
 async function transcribeAudio(blob) {

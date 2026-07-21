@@ -1,6 +1,6 @@
-// 猪宝本地版 Service Worker v17.0
-// v17.0: iOS录音+Whisper API语音识别——点一下直接说话转文字
-const CACHE = "zhubao-local-v17.0";
+// 猪宝本地版 Service Worker v17.1
+// v17.1: iOS按钮图标统一用电话样式
+const CACHE = "zhubao-local-v17.1";
 const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
 
 self.addEventListener("install", (e) => {
